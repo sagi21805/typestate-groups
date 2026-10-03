@@ -113,12 +113,12 @@ struct Pointer<S: Word> {
 }
 
 #[typestate(unsafe_transmute = true)]
-struct Borrowed<'a, S: Word> {
+struct Ref<'a, S: Word> {
     value: &'a S::Value,
 }
 
 #[typestate(unsafe_transmute = true)]
-struct Lent<'a, S: Byte> {
+struct RefMut<'a, S: Byte> {
     value: &'a mut S::Value,
 }
 
@@ -192,18 +192,18 @@ fn transmute_state_non_null_surrogate_into_char() {
 #[ignore = "undefined behaviour: run alone under Miri"]
 fn transmute_state_shared_pointee_into_cell() {
     let value = 1u32;
-    let bits = Borrowed::<Bits> { value: &value };
-    let shared: Borrowed<Shared> = unsafe { bits.transmute_state() };
+    let bits = Ref::<Bits> { value: &value };
+    let shared: Ref<Shared> = unsafe { bits.transmute_state() };
     shared.value.set(2);
     assert_eq!(value, 2);
 }
 
 #[test]
 #[ignore = "undefined behaviour: run alone under Miri"]
-fn transmute_state_lent_bool_gets_an_invalid_byte_back() {
+fn transmute_state_borrowed_bool_gets_an_invalid_byte_back() {
     let mut value = false;
-    let raw: Lent<Raw> =
-        unsafe { Lent::<Flag> { value: &mut value }.transmute_state() };
+    let raw: RefMut<Raw> =
+        unsafe { RefMut::<Flag> { value: &mut value }.transmute_state() };
     *raw.value = 2;
     assert!(value);
 }

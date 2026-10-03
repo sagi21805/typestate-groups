@@ -105,7 +105,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect`
   --> $WORKSPACE/typestate-groups/src/cast.rs
    |
-   | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
    |
@@ -139,7 +139,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect`
   --> $WORKSPACE/typestate-groups/src/cast.rs
    |
-   | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 help: consider further restricting type parameter `S` with trait `Indirect`
    |
@@ -171,7 +171,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 
 error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<<S as Meta>::Value>` may not keep its layout across states
@@ -201,7 +201,7 @@ error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`:
 note: required by a bound in `typestate_groups::CastIndirect`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 
 error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<*const <S as Meta>::Value>` may not keep its layout across states
@@ -245,7 +245,7 @@ error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`:
 note: required by a bound in `typestate_groups::CastIndirect`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 
 error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
@@ -277,7 +277,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
     |
@@ -313,7 +313,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect`
 help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
     |
@@ -331,7 +331,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
   --> $WORKSPACE/typestate-groups/src/cast.rs
    |
-   | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
    |     const SAME_POINTEE_LAYOUT: bool;
@@ -351,7 +351,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
   --> $WORKSPACE/typestate-groups/src/cast.rs
    |
-   | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
    |     const SAME_POINTEE_LAYOUT: bool;
@@ -372,7 +372,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
     |     const SAME_POINTEE_LAYOUT: bool;
@@ -390,7 +390,7 @@ error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`:
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
     |     const SAME_POINTEE_LAYOUT: bool;
@@ -415,7 +415,7 @@ error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`:
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
     |     const SAME_POINTEE_LAYOUT: bool;
@@ -432,7 +432,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
     |     const SAME_POINTEE_LAYOUT: bool;
@@ -453,7 +453,7 @@ error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a 
 note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
    --> $WORKSPACE/typestate-groups/src/cast.rs
     |
-    | pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
 ...
     |     const SAME_POINTEE_LAYOUT: bool;

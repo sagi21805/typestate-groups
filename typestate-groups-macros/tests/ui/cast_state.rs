@@ -5,7 +5,7 @@
 
 use core::{cell::Cell, num::NonZeroU32, ptr::NonNull};
 use std::sync::Arc;
-use typestate_groups::{CastableState, Isomorphic, Owned};
+use typestate_groups::{CastableState, Isomorphic, ByValue};
 use typestate_groups_macros::{group, state, state_types, typestate};
 
 #[state_types]
@@ -121,7 +121,7 @@ struct Pointer<S: Word> {
 }
 
 #[typestate(unsafe_transmute = true)]
-struct Borrowed<'a, S: Word> {
+struct Ref<'a, S: Word> {
     value: &'a S::Value,
 }
 
@@ -131,7 +131,7 @@ struct Counted<S: Word> {
 }
 
 #[typestate(unsafe_transmute = true)]
-struct Lent<'a, S: Byte> {
+struct RefMut<'a, S: Byte> {
     value: &'a mut S::Value,
 }
 
@@ -167,7 +167,7 @@ fn transmute_state_non_null_surrogate_into_char(bits: Pointer<Bits>) {
     let _ = bits.cast_state::<Letter>();
 }
 
-fn transmute_state_shared_pointee_into_cell(bits: Borrowed<Bits>) {
+fn transmute_state_shared_pointee_into_cell(bits: Ref<Bits>) {
     let _ = bits.cast_state::<Shared>();
 }
 
@@ -175,7 +175,7 @@ fn arc_pointee_into_cell(bits: Counted<Bits>) {
     let _ = bits.cast_state::<Shared>();
 }
 
-fn transmute_state_lent_bool_gets_an_invalid_byte_back(flag: Lent<Flag>) {
+fn transmute_state_borrowed_bool_gets_an_invalid_byte_back(flag: RefMut<Flag>) {
     let _ = flag.cast_state::<Raw>();
 }
 
@@ -183,7 +183,7 @@ fn transmute_state_lent_bool_gets_an_invalid_byte_back(flag: Lent<Flag>) {
 // sit where a `u32` can't. `cast_state` evaluates `POINTEE_CHECK` only
 // under `cargo build`, and trybuild runs `cargo check`, so a const item
 // forces it here.
-const _: () = <Pointer<Quad> as CastableState<Bits, Owned>>::POINTEE_CHECK;
+const _: () = <Pointer<Quad> as CastableState<Bits, ByValue>>::POINTEE_CHECK;
 
 fn size_mismatch(raw: Small<Raw>) {
     let _ = raw.cast_state::<Pair>();
