@@ -14,13 +14,13 @@ mod morph;
 mod transmute;
 
 pub use cast::{
-    Access, CastFrom, CastIndirect, CastPointee, CastRefFrom, CastValid,
-    CastableState, Exclusive, Owned, Shared,
+    ByMut, ByRef, ByValue, CastFrom, CastIndirect, CastPointee,
+    CastReceiver, CastRefFrom, CastValid, CastableState,
 };
 pub use error_helpers::PinnedLayout;
 pub use indirect::{
-    Aliasing, Indirect, LentPointee, NullNiche, Repointed, SharedPointee,
-    UniquePointee, UnknownPointee,
+    Aliasing, BorrowedPointee, Indirect, NullNiche, Repointed,
+    SharedPointee, UniquePointee, UnknownPointee,
 };
 pub use layout::{
     PinnedTypeAlignment, PinnedTypeLayout, PinnedTypeSize, SameAlignment,
@@ -42,8 +42,6 @@ pub trait WithState {
 
 /// `Self` with its state replaced by `To` and every other generic
 /// unchanged.
-///
-/// `#[typestate]` implements it for every target state.
 pub trait Restate<To: State>: WithState {
     /// `Self` in state `To`.
     type Target: WithState<State = To>;

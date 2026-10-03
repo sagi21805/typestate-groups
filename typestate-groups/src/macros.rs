@@ -57,3 +57,18 @@ macro_rules! indirect {
         unsafe impl<$($lt,)? $t, $u> $crate::Repointed<$src> for $dst {}
     )*};
 }
+
+/// Declares each receiver marker and implements `CastReceiver` for it.
+macro_rules! cast_receiver {
+    ($(
+        $(#[$attr:meta])*
+        $receiver:ident => $borrowed:ident;
+    )*) => {$(
+        $(#[$attr])*
+        pub enum $receiver {}
+
+        impl $crate::CastReceiver for $receiver {
+            type Borrowed = $borrowed;
+        }
+    )*};
+}

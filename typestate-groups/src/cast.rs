@@ -1,15 +1,11 @@
 //! Safe bit-reinterpreting transitions, checked field by field.
 
 use crate::{
-    Indirect, LentPointee, Repointed, SharedPointee, State,
+    BorrowedPointee, Indirect, Repointed, SharedPointee, State,
     TransmutableState, UniquePointee, UnknownPointee,
 };
 
 /// Every valid `Src` is a valid `Self` of the same size.
-///
-/// Implemented for every `Src: IntoBytes` and `Self: FromBytes`, from
-/// [`zerocopy`]. `#[typestate]` requires it of every field that projects
-/// through the state.
 ///
 /// # Safety
 ///
@@ -34,11 +30,6 @@ unsafe impl<S: zerocopy::IntoBytes, D: zerocopy::FromBytes> CastFrom<S>
 /// Neither `Src` nor `Self` holds an `UnsafeCell`, so a `&Src` can be
 /// read as a `&Self`.
 ///
-/// Implemented for every `Src: Immutable` and `Self: Immutable`, from
-/// [`zerocopy`]. `#[typestate]` requires it next to [`CastFrom`] of every
-/// field that projects through the state for
-/// [`cast_state_ref`](crate::Isomorphic::cast_state_ref).
-///
 /// # Safety
 ///
 /// Neither `Self` nor `Src` may hold an `UnsafeCell`.
@@ -59,33 +50,84 @@ unsafe impl<S: zerocopy::Immutable, D: zerocopy::Immutable> CastRefFrom<S>
 {
 }
 
-/// How a cast holds the container: [`Owned`], [`Shared`] or
-/// [`Exclusive`].
-pub trait Access {}
+/// How a cast holds the container: [`ByValue`], [`ByRef`] or
+/// [`ByMut`].
+///
+/// You don't pick a receiver by hand: [`cast_state`], [`cast_state_ref`]
+/// and [`cast_state_mut`] cast through [`ByValue`], [`ByRef`] and
+/// [`ByMut`]. Name one only in a bound, when generic code needs a cast,
+/// such as `T: CastableState<To, ByRef>`.
+///
+/// The receiver decides which fields must stay valid, and in which
+/// direction. A `&mut` field shows the difference. Here `Flag` holds a
+/// `bool` and `Raw` a `u8`:
+///
+/// ```
+/// # use typestate_groups::{Isomorphic, group, state, state_types, typestate};
+/// # #[state_types]
+/// # trait Byte {
+/// #     type Value;
+/// # }
+/// # #[state]
+/// # struct Flag;
+/// # #[state]
+/// # struct Raw;
+/// # #[group(FlagGroup)]
+/// # impl Byte for (Flag,) {
+/// #     #[size(1)]
+/// #     type Value = bool;
+/// # }
+/// # #[group(RawGroup)]
+/// # impl Byte for (Raw,) {
+/// #     #[size(1)]
+/// #     type Value = u8;
+/// # }
+/// #[typestate(unsafe_transmute = true)]
+/// struct RefMut<'a, S: Byte> {
+///     value: &'a mut S::Value,
+/// }
+///
+/// let mut owner = true;
+/// let flag = RefMut::<Flag> { value: &mut owner };
+///
+/// let raw = flag.cast_state_ref::<Raw>(); // `&` can't write the `bool`
+/// assert_eq!(*raw.value, 1); // reads `true` as the `u8` 1
+///
+/// // Doesn't compile, because it would allow UB:
+/// // let raw = flag.cast_state::<Raw>(); // `raw` can write any `u8`
+/// // *raw.value = 2; // writes the byte 2 into `owner`
+/// // drop(raw); // ends the borrow
+/// // if owner {} // UB: a `bool` must be 0 or 1
+/// ```
+///
+/// [`cast_state`]: crate::Isomorphic::cast_state
+/// [`cast_state_ref`]: crate::Isomorphic::cast_state_ref
+/// [`cast_state_mut`]: crate::Isomorphic::cast_state_mut
+pub trait CastReceiver {
+    /// The receiver that checks the pointee of a `&mut` field
+    /// ([`BorrowedPointee`]) when the container is cast through `Self`.
+    type Borrowed: CastReceiver;
+}
 
-/// A cast by value, with [`cast_state`](crate::Isomorphic::cast_state).
-pub enum Owned {}
-
-/// A cast through `&`, with
-/// [`cast_state_ref`](crate::Isomorphic::cast_state_ref).
-pub enum Shared {}
-
-/// A cast through `&mut`, with
-/// [`cast_state_mut`](crate::Isomorphic::cast_state_mut).
-pub enum Exclusive {}
-
-impl Access for Owned {}
-impl Access for Shared {}
-impl Access for Exclusive {}
+cast_receiver! {
+    /// A cast by value, with [`cast_state`](crate::Isomorphic::cast_state).
+    ByValue => ByMut;
+    /// A cast through `&`, with
+    /// [`cast_state_ref`](crate::Isomorphic::cast_state_ref).
+    ByRef => ByRef;
+    /// A cast through `&mut`, with
+    /// [`cast_state_mut`](crate::Isomorphic::cast_state_mut).
+    ByMut => ByMut;
+}
 
 /// Every valid `Src` is a valid `Self` when a container holding it is
-/// cast through `A`.
+/// cast through `R`.
 ///
-/// | `A` | Needs |
+/// | `R` | Needs |
 /// |---|---|
-/// | [`Owned`] | `Self: CastFrom<Src>` |
-/// | [`Shared`] | also `Self: CastRefFrom<Src>` |
-/// | [`Exclusive`] | also `Src: CastFrom<Self>` |
+/// | [`ByValue`] | `Self: CastFrom<Src>` |
+/// | [`ByRef`] | also `Self: CastRefFrom<Src>` |
+/// | [`ByMut`] | also `Src: CastFrom<Self>` |
 ///
 /// `&mut` needs both directions because the source sees what the target
 /// wrote once the borrow ends. `&` rules out `UnsafeCell` because a shared
@@ -93,82 +135,69 @@ impl Access for Exclusive {}
 ///
 /// # Safety
 ///
-/// Every valid `Src` must be a valid `Self`. For [`Shared`], neither may
-/// hold an `UnsafeCell`, and for [`Exclusive`] every valid `Self` must be
+/// Every valid `Src` must be a valid `Self`. For [`ByRef`], neither may
+/// hold an `UnsafeCell`, and for [`ByMut`] every valid `Self` must be
 /// a valid `Src`.
 #[doc(hidden)]
-pub unsafe trait CastValid<Src, A: Access> {}
+pub unsafe trait CastValid<Src, R: CastReceiver> {}
 
-// SAFETY: `CastFrom` proves every valid `S` a valid `D`.
-unsafe impl<S, D: CastFrom<S>> CastValid<S, Owned> for D {}
+// SAFETY: `CastFrom<S>` proves every valid `S` a valid `D`.
+unsafe impl<S, D: CastFrom<S>> CastValid<S, ByValue> for D {}
 
-// SAFETY: as for `Owned`, and `CastRefFrom` rules out an `UnsafeCell`.
-unsafe impl<S, D: CastFrom<S> + CastRefFrom<S>> CastValid<S, Shared>
-    for D
-{
-}
+// SAFETY: `CastFrom<S>` proves every valid `S` a valid `D`, and
+// `CastRefFrom<S>` proves they are both immutable.
+unsafe impl<S, D: CastFrom<S> + CastRefFrom<S>> CastValid<S, ByRef> for D {}
 
-// SAFETY: `CastFrom` proves it both ways.
-unsafe impl<S: CastFrom<D>, D: CastFrom<S>> CastValid<S, Exclusive> for D {}
+// SAFETY: `D: CastFrom<S>` proves every valid `S` a valid `D`, and
+// `S: CastFrom<D>` proves every valid `D` a valid `S`.
+unsafe impl<S: CastFrom<D>, D: CastFrom<S>> CastValid<S, ByMut> for D {}
 
 /// The pointee `Src` stays valid as `Dst` when a container holding a
-/// pointer with this [`Aliasing`](crate::Aliasing) is cast through `A`.
+/// pointer with this [`Aliasing`](crate::Aliasing) is cast through `R`.
 ///
 /// | Aliasing | Checks the pointee as |
 /// |---|---|
-/// | [`UniquePointee`] | `A` |
-/// | [`SharedPointee`] | [`Shared`] |
-/// | [`LentPointee`] | [`Shared`] under `Shared`, else [`Exclusive`] |
-/// | [`UnknownPointee`] | both [`Shared`] and [`Exclusive`] |
-///
-/// # Safety
-///
-/// Every valid `Src` must be a valid `Dst` for everyone the aliasing
-/// lets see the pointee.
+/// | [`UniquePointee`] | `R` |
+/// | [`SharedPointee`] | [`ByRef`] |
+/// | [`BorrowedPointee`] | [`CastReceiver::Borrowed`] |
+/// | [`UnknownPointee`] | both [`ByRef`] and [`ByMut`] |
 #[doc(hidden)]
-pub unsafe trait CastPointee<Src, Dst, A: Access> {}
+pub unsafe trait CastPointee<Src, Dst, R: CastReceiver> {}
 
-// SAFETY: only the container reaches the pointee.
-unsafe impl<S, D: CastValid<S, A>, A: Access> CastPointee<S, D, A>
+// SAFETY: `CastValid<S, R>` proves the pointee valid for the container,
+// the only one that reaches it.
+unsafe impl<S, D: CastValid<S, R>, R: CastReceiver> CastPointee<S, D, R>
     for UniquePointee
 {
 }
 
-// SAFETY: others may read the pointee through shared aliases.
-unsafe impl<S, D: CastValid<S, Shared>, A: Access> CastPointee<S, D, A>
-    for SharedPointee
+// SAFETY: `CastValid<S, ByRef>` proves the pointee valid for the
+// readers behind shared aliases, with no `UnsafeCell` to write through.
+unsafe impl<S, D: CastValid<S, ByRef>, R: CastReceiver>
+    CastPointee<S, D, R> for SharedPointee
 {
 }
 
-// SAFETY: the lender sees what the target writes once the borrow ends.
-unsafe impl<S, D: CastValid<S, Exclusive>> CastPointee<S, D, Owned>
-    for LentPointee
+// SAFETY: `CastValid<S, R::Borrowed>` proves the pointee valid for the
+// container and for the owner, who reads it after the borrow ends.
+unsafe impl<S, D: CastValid<S, R::Borrowed>, R: CastReceiver>
+    CastPointee<S, D, R> for BorrowedPointee
 {
 }
 
-// SAFETY: through `&`, neither side writes the pointee.
-unsafe impl<S, D: CastValid<S, Shared>> CastPointee<S, D, Shared>
-    for LentPointee
-{
-}
-
-// SAFETY: the lender sees what the target writes once the borrow ends.
-unsafe impl<S, D: CastValid<S, Exclusive>> CastPointee<S, D, Exclusive>
-    for LentPointee
-{
-}
-
-// SAFETY: anyone may read or write the pointee.
+// SAFETY: `CastValid<S, ByRef>` and `CastValid<S, ByMut>` prove the
+// pointee valid both ways, with no `UnsafeCell`, for anyone who reads or
+// writes it.
 unsafe impl<
     S,
-    D: CastValid<S, Shared> + CastValid<S, Exclusive>,
-    A: Access,
-> CastPointee<S, D, A> for UnknownPointee
+    D: CastValid<S, ByRef> + CastValid<S, ByMut>,
+    R: CastReceiver,
+> CastPointee<S, D, R> for UnknownPointee
 {
 }
 
 /// `Src`'s pointee stays valid as `Self`'s when a container holding it
-/// is cast through `A`, as `Src`'s [`Aliasing`](crate::Aliasing) decides
+/// is cast through `R`, as `Src`'s [`Aliasing`](crate::Aliasing) decides
 /// through [`CastPointee`].
 ///
 /// # Safety
@@ -178,7 +207,7 @@ unsafe impl<
 /// [`SAME_POINTEE_LAYOUT`](CastIndirect::SAME_POINTEE_LAYOUT) must be
 /// `true` only when both pointees share a size and alignment.
 #[doc(hidden)]
-pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
+pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
     Repointed<Src>
 {
     /// Whether both pointees share a size and alignment, which
@@ -188,31 +217,23 @@ pub unsafe trait CastIndirect<Src: Indirect, A: Access>:
 
 // SAFETY: `CastPointee` proves the pointee valid under `S`'s aliasing,
 // and the const compares the pointees' layouts.
-unsafe impl<S: Indirect, D: Repointed<S>, A: Access> CastIndirect<S, A>
-    for D
+unsafe impl<S: Indirect, D: Repointed<S>, R: CastReceiver>
+    CastIndirect<S, R> for D
 where
-    S::Aliasing: CastPointee<S::Pointee, D::Pointee, A>,
+    S::Aliasing: CastPointee<S::Pointee, D::Pointee, R>,
 {
     const SAME_POINTEE_LAYOUT: bool = size_of::<S::Pointee>()
         == size_of::<D::Pointee>()
         && align_of::<S::Pointee>() == align_of::<D::Pointee>();
 }
 
-/// `Self` can be reinterpreted in state `To` through access `A` without
+/// `Self` can be reinterpreted in state `To` through receiver `R` without
 /// `unsafe`.
-///
-/// `#[typestate(unsafe_transmute = true)]` implements it for each access.
-/// It requires [`CastValid<S::P, A>`](CastValid) of each field `S::P`,
-/// and [`CastIndirect<F, A>`](CastIndirect) of each [`Indirect`] field
-/// `F`, whose pointee gets the checks its
-/// [`Aliasing`](Indirect::Aliasing) asks for. Every pointee must also
-/// keep its size and alignment, which
-/// [`POINTEE_CHECK`](CastableState::POINTEE_CHECK) asserts.
 ///
 /// # Safety
 ///
-/// Every valid `Self` must be a valid `Target`, and for [`Exclusive`]
-/// every valid `Target` a valid `Self`. For [`Shared`], no field whose
+/// Every valid `Self` must be a valid `Target`, and for [`ByMut`]
+/// every valid `Target` a valid `Self`. For [`ByRef`], no field whose
 /// type changes may hold an `UnsafeCell` in either state. Every pointee
 /// must stay valid in the same way for every alias that may see it.
 #[diagnostic::on_unimplemented(
@@ -220,7 +241,7 @@ where
                `{Self}` to cast it into state `{To}`",
     note = "or convert by value with `morph`"
 )]
-pub unsafe trait CastableState<To: State, A: Access>:
+pub unsafe trait CastableState<To: State, R: CastReceiver>:
     TransmutableState<To>
 {
     /// Compile-time check that every pointee keeps its size and

@@ -6,10 +6,7 @@ use core::ptr::NonNull;
 /// `#[typestate(unsafe_transmute = true)]` field of this type can point
 /// at a state-dependent type.
 ///
-/// Implemented for `*const T`, `*mut T`, `NonNull<T>`, `&T`, `&mut T`,
-/// and with the `alloc` feature `Box<T>`, `Arc<T>` and `Rc<T>`, plus
-/// `Option` of any [`NullNiche`] type. Implement it, with [`Repointed`],
-/// for your own pointer:
+/// Implement it, with [`Repointed`], for your own pointer:
 ///
 /// ```
 /// use core::ptr::NonNull;
@@ -81,7 +78,7 @@ pub unsafe trait Repointed<Src: Indirect>: Indirect {}
 pub unsafe trait NullNiche: Indirect {}
 
 /// Who else may see an [`Indirect`]'s pointee: [`UniquePointee`],
-/// [`SharedPointee`], [`LentPointee`] or [`UnknownPointee`].
+/// [`SharedPointee`], [`BorrowedPointee`] or [`UnknownPointee`].
 pub trait Aliasing {}
 
 /// Only the pointer sees its pointee, as in `Box<T>`. A cast checks the
@@ -93,10 +90,11 @@ pub enum UniquePointee {}
 /// does, even by value.
 pub enum SharedPointee {}
 
-/// The pointee goes back to its lender, as through `&mut T`. A cast
+/// The pointee is borrowed from an owner who uses it again after the
+/// borrow ends, as through `&mut T`. A cast
 /// checks it as [`cast_state_mut`](crate::Isomorphic::cast_state_mut)
 /// does, except through `&`.
-pub enum LentPointee {}
+pub enum BorrowedPointee {}
 
 /// Anyone may read or write the pointee, as through `*const T`,
 /// `*mut T` or `NonNull<T>`. A cast checks it both ways.
@@ -104,7 +102,7 @@ pub enum UnknownPointee {}
 
 impl Aliasing for UniquePointee {}
 impl Aliasing for SharedPointee {}
-impl Aliasing for LentPointee {}
+impl Aliasing for BorrowedPointee {}
 impl Aliasing for UnknownPointee {}
 
 // SAFETY: a pointer to a sized `T` is one address whatever `T` is, and
@@ -114,7 +112,7 @@ indirect! {
     impl<T, U> *mut T => *mut U: UnknownPointee;
     impl<T, U> NonNull<T> => NonNull<U>: UnknownPointee;
     impl<'a, T, U> &'a T => &'a U: SharedPointee;
-    impl<'a, T, U> &'a mut T => &'a mut U: LentPointee;
+    impl<'a, T, U> &'a mut T => &'a mut U: BorrowedPointee;
 }
 
 // SAFETY: std guarantees `Option` of each a null niche.
