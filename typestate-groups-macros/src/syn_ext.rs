@@ -4,11 +4,12 @@ use extend::ext;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens, quote};
 use syn::{
-    AssocType, Attribute, Generics, Ident, Path, PredicateType, Token,
-    Type, TypeParam, TypeParamBound, TypePath, WherePredicate,
+    AssocType, Attribute, GenericArgument, Generics, Ident, Path,
+    PredicateType, Token, Type, TypeParam, TypeParamBound, TypePath,
+    WherePredicate,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    visit::Visit,
+    visit::{self, Visit},
     visit_mut::VisitMut,
 };
 
@@ -47,9 +48,29 @@ pub(crate) impl Type {
         self.zst_value().is_some()
     }
 
-    /// Whether `ident` appears anywhere inside this type.
+    /// Whether `ident` appears anywhere inside this type, macro tokens
+    /// included.
     fn mentions_ident(&self, ident: &Ident) -> bool {
-        self.to_token_stream().mentions_ident(ident)
+        let mut finder = FindIdent {
+            ident,
+            found: false,
+        };
+        finder.visit_type(self);
+        finder.found
+    }
+
+    /// This type with every `from` renamed to `to`.
+    ///
+    /// `Node<S>` -> `Node<T>`
+    fn renamed(&self, from: &Ident, to: &Ident) -> Type {
+        let mut ty = self.clone();
+        Rename {
+            from,
+            to,
+            found: false,
+        }
+        .visit_type_mut(&mut ty);
+        ty
     }
 }
 
@@ -121,8 +142,14 @@ pub(crate) impl Generics {
 struct FirstAssocType<'ast>(Option<&'ast AssocType>);
 
 impl<'ast> Visit<'ast> for FirstAssocType<'ast> {
-    fn visit_assoc_type(&mut self, assoc: &'ast AssocType) {
-        self.0.get_or_insert(assoc);
+    fn visit_generic_argument(&mut self, arg: &'ast GenericArgument) {
+        if self.0.is_some() {
+            return;
+        }
+        match arg {
+            GenericArgument::AssocType(assoc) => self.0 = Some(assoc),
+            _ => visit::visit_generic_argument(self, arg),
+        }
     }
 }
 
@@ -214,7 +241,35 @@ pub(crate) impl<T: Parse> Option<T> {
     }
 }
 
-/// Token scan behind the `Type` method of the same name.
+/// Finds `ident` inside one type, and stops visiting once it has.
+///
+/// syn leaves a macro's tokens unparsed, so a `Type::Macro` falls back to
+/// scanning its tokens.
+struct FindIdent<'a> {
+    ident: &'a Ident,
+    found: bool,
+}
+
+impl<'ast> Visit<'ast> for FindIdent<'_> {
+    fn visit_type(&mut self, ty: &'ast Type) {
+        if self.found {
+            return;
+        }
+        match ty {
+            Type::Macro(mac) => {
+                self.found =
+                    mac.to_token_stream().mentions_ident(self.ident);
+            }
+            _ => visit::visit_type(self, ty),
+        }
+    }
+
+    fn visit_ident(&mut self, ident: &'ast Ident) {
+        self.found |= ident == self.ident;
+    }
+}
+
+/// Token scan behind `FindIdent`'s macro fallback.
 #[ext]
 impl TokenStream {
     /// Whether `ident` appears anywhere in these tokens.

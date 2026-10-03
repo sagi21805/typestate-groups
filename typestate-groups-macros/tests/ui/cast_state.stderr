@@ -1,25 +1,26 @@
 error[E0277]: convert with `morph`: `u8` may hold bits that are not a valid `bool`
-   --> tests/ui/cast_state.rs:110:13
+   --> tests/ui/cast_state.rs:139:13
     |
-110 |     let _ = raw.cast_state::<Flag>();
+139 |     let _ = raw.cast_state::<Flag>();
     |             ^^^ the trait `CastFrom<u8>` is not implemented for `bool`
     |
     = note: a cast needs `u8: zerocopy::IntoBytes` (no padding) and `bool: zerocopy::FromBytes` (every bit pattern valid)
-help: `Small<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:40:1
+help: `Small<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:41:1
     |
- 40 | #[typestate(unsafe_transmute = true)]
+ 41 | #[typestate(unsafe_transmute = true)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Small<Raw>` to implement `CastableState<Flag, typestate_groups::Owned>`
-   --> tests/ui/cast_state.rs:40:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `bool` to implement `typestate_groups::CastValid<u8, ByValue>`
+note: required for `Small<Raw>` to implement `CastableState<Flag, ByValue>`
+   --> tests/ui/cast_state.rs:41:1
     |
- 40 | #[typestate(unsafe_transmute = true)]
+ 41 | #[typestate(unsafe_transmute = true)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
- 41 | struct Small<S: Byte> {
+ 42 | struct Small<S: Byte> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -27,32 +28,33 @@ note: required by a bound in `cast_state`
     |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     |        ---------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Owned>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: convert with `morph`: `u32` may hold bits that are not a valid `char`
-   --> tests/ui/cast_state.rs:114:13
+   --> tests/ui/cast_state.rs:143:13
     |
-114 |     let _ = bits.cast_state::<Letter>();
+143 |     let _ = bits.cast_state::<Letter>();
     |             ^^^^ the trait `CastFrom<u32>` is not implemented for `char`
     |
     = note: a cast needs `u32: zerocopy::IntoBytes` (no padding) and `char: zerocopy::FromBytes` (every bit pattern valid)
-help: `Large<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:104:1
+help: `Large<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Large<Bits>` to implement `CastableState<Letter, typestate_groups::Owned>`
-   --> tests/ui/cast_state.rs:104:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `char` to implement `typestate_groups::CastValid<u32, ByValue>`
+note: required for `Large<Bits>` to implement `CastableState<Letter, ByValue>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
-105 | struct Large<S: Word> {
+114 | struct Large<S: Word> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -60,32 +62,33 @@ note: required by a bound in `cast_state`
     |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     |        ---------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Owned>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: convert with `morph`: `u32` may hold bits that are not a valid `NonZero<u32>`
-   --> tests/ui/cast_state.rs:118:13
+   --> tests/ui/cast_state.rs:147:13
     |
-118 |     let _ = bits.cast_state_ref::<Count>();
+147 |     let _ = bits.cast_state_ref::<Count>();
     |             ^^^^ the trait `CastFrom<u32>` is not implemented for `NonZero<u32>`
     |
     = note: a cast needs `u32: zerocopy::IntoBytes` (no padding) and `NonZero<u32>: zerocopy::FromBytes` (every bit pattern valid)
-help: `Large<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:104:1
+help: `Large<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Large<Bits>` to implement `CastableState<Count, typestate_groups::Shared>`
-   --> tests/ui/cast_state.rs:104:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `NonZero<u32>` to implement `typestate_groups::CastValid<u32, ByRef>`
+note: required for `Large<Bits>` to implement `CastableState<Count, ByRef>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
-105 | struct Large<S: Word> {
+114 | struct Large<S: Word> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state_ref`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -93,32 +96,33 @@ note: required by a bound in `cast_state_ref`
     |     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
     |        -------------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Shared>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
+    |         Self: CastableState<To, ByRef>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: convert with `morph`: `Padded` may hold bits that are not a valid `u32`
-   --> tests/ui/cast_state.rs:122:13
+   --> tests/ui/cast_state.rs:151:13
     |
-122 |     let _ = gapped.cast_state::<Bits>();
+151 |     let _ = gapped.cast_state::<Bits>();
     |             ^^^^^^ the trait `CastFrom<Padded>` is not implemented for `u32`
     |
     = note: a cast needs `Padded: zerocopy::IntoBytes` (no padding) and `u32: zerocopy::FromBytes` (every bit pattern valid)
-help: `Large<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:104:1
+help: `Large<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Large<Gapped>` to implement `CastableState<Bits, typestate_groups::Owned>`
-   --> tests/ui/cast_state.rs:104:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `u32` to implement `typestate_groups::CastValid<Padded, ByValue>`
+note: required for `Large<Gapped>` to implement `CastableState<Bits, ByValue>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
-105 | struct Large<S: Word> {
+114 | struct Large<S: Word> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -126,32 +130,33 @@ note: required by a bound in `cast_state`
     |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     |        ---------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Owned>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: convert with `morph`: `u8` may hold bits that are not a valid `bool`
-   --> tests/ui/cast_state.rs:126:5
+   --> tests/ui/cast_state.rs:155:5
     |
-126 |     flag.cast_state_mut::<Raw>().value = 2;
+155 |     flag.cast_state_mut::<Raw>().value = 2;
     |     ^^^^ the trait `CastFrom<u8>` is not implemented for `bool`
     |
     = note: a cast needs `u8: zerocopy::IntoBytes` (no padding) and `bool: zerocopy::FromBytes` (every bit pattern valid)
-help: `Small<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:40:1
+help: `Small<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:41:1
     |
- 40 | #[typestate(unsafe_transmute = true)]
+ 41 | #[typestate(unsafe_transmute = true)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Small<Flag>` to implement `CastableState<Raw, typestate_groups::Exclusive>`
-   --> tests/ui/cast_state.rs:40:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `u8` to implement `typestate_groups::CastValid<bool, ByMut>`
+note: required for `Small<Flag>` to implement `CastableState<Raw, ByMut>`
+   --> tests/ui/cast_state.rs:41:1
     |
- 40 | #[typestate(unsafe_transmute = true)]
+ 41 | #[typestate(unsafe_transmute = true)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
- 41 | struct Small<S: Byte> {
+ 42 | struct Small<S: Byte> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state_mut`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -159,32 +164,33 @@ note: required by a bound in `cast_state_mut`
     |     fn cast_state_mut<To: State>(
     |        -------------- required by a bound in this associated function
 ...
-    |         Self: CastableState<To, Exclusive>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_mut`
+    |         Self: CastableState<To, ByMut>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_mut`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: cast by value with `cast_state` or `cast_state_mut`: `u32` or `Cell<u32>` may hold an `UnsafeCell` that `&` could write through
-   --> tests/ui/cast_state.rs:130:5
+error[E0277]: convert with `morph`, or cast a field held by value with `cast_state` or `cast_state_mut`: `u32` or `Cell<u32>` may hold an `UnsafeCell` that a shared alias could write through
+   --> tests/ui/cast_state.rs:159:5
     |
-130 |     bits.cast_state_ref::<Shared>().value.set(2);
+159 |     bits.cast_state_ref::<Shared>().value.set(2);
     |     ^^^^ the trait `CastRefFrom<u32>` is not implemented for `Cell<u32>`
     |
-    = note: a cast through `&` also needs `u32` and `Cell<u32>` to be `zerocopy::Immutable`
-help: `Large<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:104:1
+    = note: a cast through `&`, or of a `&` or raw pointer's pointee, also needs `u32` and `Cell<u32>` to be `zerocopy::Immutable`
+help: `Large<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Large<Bits>` to implement `CastableState<Shared, typestate_groups::Shared>`
-   --> tests/ui/cast_state.rs:104:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `Cell<u32>` to implement `typestate_groups::CastValid<u32, ByRef>`
+note: required for `Large<Bits>` to implement `CastableState<Shared, ByRef>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
-105 | struct Large<S: Word> {
+114 | struct Large<S: Word> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state_ref`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -192,32 +198,33 @@ note: required by a bound in `cast_state_ref`
     |     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
     |        -------------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Shared>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
+    |         Self: CastableState<To, ByRef>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: cast by value with `cast_state` or `cast_state_mut`: `Cell<u32>` or `u32` may hold an `UnsafeCell` that `&` could write through
-   --> tests/ui/cast_state.rs:134:13
+error[E0277]: convert with `morph`, or cast a field held by value with `cast_state` or `cast_state_mut`: `Cell<u32>` or `u32` may hold an `UnsafeCell` that a shared alias could write through
+   --> tests/ui/cast_state.rs:163:13
     |
-134 |     let _ = shared.cast_state_ref::<Bits>();
+163 |     let _ = shared.cast_state_ref::<Bits>();
     |             ^^^^^^ the trait `CastRefFrom<Cell<u32>>` is not implemented for `u32`
     |
-    = note: a cast through `&` also needs `Cell<u32>` and `u32` to be `zerocopy::Immutable`
-help: `Large<S>` implements trait `CastableState<To, A>`
-   --> tests/ui/cast_state.rs:104:1
+    = note: a cast through `&`, or of a `&` or raw pointer's pointee, also needs `Cell<u32>` and `u32` to be `zerocopy::Immutable`
+help: `Large<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     | |
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-    | `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-note: required for `Large<Shared>` to implement `CastableState<Bits, typestate_groups::Shared>`
-   --> tests/ui/cast_state.rs:104:1
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `u32` to implement `typestate_groups::CastValid<Cell<u32>, ByRef>`
+note: required for `Large<Shared>` to implement `CastableState<Bits, ByRef>`
+   --> tests/ui/cast_state.rs:113:1
     |
-104 | #[typestate(unsafe_transmute = true, align = 4)]
+113 | #[typestate(unsafe_transmute = true, align = 4)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
-105 | struct Large<S: Word> {
+114 | struct Large<S: Word> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state_ref`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -225,14 +232,178 @@ note: required by a bound in `cast_state_ref`
     |     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
     |        -------------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Shared>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
+    |         Self: CastableState<To, ByRef>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: convert with `morph` instead of transmuting: `typestate_groups::PinnedTypeSize<RawGroup, u8, 1>` and `typestate_groups::PinnedTypeSize<PairGroup, [u8; 2], 2>` differ in size
-   --> tests/ui/cast_state.rs:138:17
+error[E0277]: convert with `morph`: `u32` may hold bits that are not a valid `char`
+   --> tests/ui/cast_state.rs:167:13
     |
-138 |     let _ = raw.cast_state::<Pair>();
+167 |     let _ = bits.cast_state::<Letter>();
+    |             ^^^^ the trait `CastFrom<u32>` is not implemented for `char`
+    |
+    = note: a cast needs `u32: zerocopy::IntoBytes` (no padding) and `char: zerocopy::FromBytes` (every bit pattern valid)
+help: `Pointer<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:118:1
+    |
+118 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `char` to implement `typestate_groups::CastValid<u32, ByRef>`
+    = note: required for `UnknownPointee` to implement `typestate_groups::CastPointee<u32, char, ByValue>`
+    = note: required for `NonNull<char>` to implement `typestate_groups::CastIndirect<NonNull<u32>, ByValue>`
+note: required for `Pointer<Bits>` to implement `CastableState<Letter, ByValue>`
+   --> tests/ui/cast_state.rs:118:1
+    |
+118 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+119 | struct Pointer<S: Word> {
+    |        ^^^^^^^^^^^^^^^^
+120 |     value: NonNull<S::Value>,
+    |            ------- unsatisfied trait bound introduced here
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: convert with `morph`, or cast a field held by value with `cast_state` or `cast_state_mut`: `u32` or `Cell<u32>` may hold an `UnsafeCell` that a shared alias could write through
+   --> tests/ui/cast_state.rs:171:13
+    |
+171 |     let _ = bits.cast_state::<Shared>();
+    |             ^^^^ the trait `CastRefFrom<u32>` is not implemented for `Cell<u32>`
+    |
+    = note: a cast through `&`, or of a `&` or raw pointer's pointee, also needs `u32` and `Cell<u32>` to be `zerocopy::Immutable`
+help: `Ref<'_, S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:123:1
+    |
+123 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `Cell<u32>` to implement `typestate_groups::CastValid<u32, ByRef>`
+    = note: required for `SharedPointee` to implement `typestate_groups::CastPointee<u32, Cell<u32>, ByValue>`
+    = note: required for `&Cell<u32>` to implement `typestate_groups::CastIndirect<&u32, ByValue>`
+note: required for `Ref<'_, Bits>` to implement `CastableState<Shared, ByValue>`
+   --> tests/ui/cast_state.rs:123:1
+    |
+123 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+124 | struct Ref<'a, S: Word> {
+    |        ^^^^^^^^^^^^^^^^
+125 |     value: &'a S::Value,
+    |            - unsatisfied trait bound introduced here
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: convert with `morph`, or cast a field held by value with `cast_state` or `cast_state_mut`: `u32` or `Cell<u32>` may hold an `UnsafeCell` that a shared alias could write through
+   --> tests/ui/cast_state.rs:175:13
+    |
+175 |     let _ = bits.cast_state::<Shared>();
+    |             ^^^^ the trait `CastRefFrom<u32>` is not implemented for `Cell<u32>`
+    |
+    = note: a cast through `&`, or of a `&` or raw pointer's pointee, also needs `u32` and `Cell<u32>` to be `zerocopy::Immutable`
+help: `Counted<S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:128:1
+    |
+128 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `Cell<u32>` to implement `typestate_groups::CastValid<u32, ByRef>`
+    = note: required for `SharedPointee` to implement `typestate_groups::CastPointee<u32, Cell<u32>, ByValue>`
+    = note: required for `Arc<Cell<u32>>` to implement `typestate_groups::CastIndirect<Arc<u32>, ByValue>`
+note: required for `Counted<Bits>` to implement `CastableState<Shared, ByValue>`
+   --> tests/ui/cast_state.rs:128:1
+    |
+128 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+129 | struct Counted<S: Word> {
+    |        ^^^^^^^^^^^^^^^^
+130 |     value: Arc<S::Value>,
+    |            --- unsatisfied trait bound introduced here
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: convert with `morph`: `u8` may hold bits that are not a valid `bool`
+   --> tests/ui/cast_state.rs:179:13
+    |
+179 |     let _ = flag.cast_state::<Raw>();
+    |             ^^^^ the trait `CastFrom<u8>` is not implemented for `bool`
+    |
+    = note: a cast needs `u8: zerocopy::IntoBytes` (no padding) and `bool: zerocopy::FromBytes` (every bit pattern valid)
+help: `RefMut<'_, S>` implements trait `CastableState<To, R>`
+   --> tests/ui/cast_state.rs:133:1
+    |
+133 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+    = note: required for `u8` to implement `typestate_groups::CastValid<bool, ByMut>`
+    = note: required for `BorrowedPointee` to implement `typestate_groups::CastPointee<bool, u8, ByValue>`
+    = note: required for `&mut u8` to implement `typestate_groups::CastIndirect<&mut bool, ByValue>`
+note: required for `RefMut<'_, Flag>` to implement `CastableState<Raw, ByValue>`
+   --> tests/ui/cast_state.rs:133:1
+    |
+133 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+134 | struct RefMut<'a, S: Byte> {
+    |        ^^^^^^^^^^^^^^^^^^^
+135 |     value: &'a mut S::Value,
+    |            - unsatisfied trait bound introduced here
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0080]: evaluation panicked: make the pointee of `value` keep its size and alignment in the target state, or convert with `morph`
+   --> tests/ui/cast_state.rs:118:1
+    |
+118 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `<Pointer<Quad> as typestate_groups::CastableState<Bits, typestate_groups::ByValue>>::POINTEE_CHECK` failed here
+
+note: erroneous constant encountered
+   --> tests/ui/cast_state.rs:186:15
+    |
+186 | const _: () = <Pointer<Quad> as CastableState<Bits, ByValue>>::POINTEE_CHECK;
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: convert with `morph` instead of transmuting: `typestate_groups::PinnedTypeSize<RawGroup, u8, 1>` and `typestate_groups::PinnedTypeSize<PairGroup, [u8; 2], 2>` differ in size
+   --> tests/ui/cast_state.rs:189:17
+    |
+189 |     let _ = raw.cast_state::<Pair>();
     |                 ^^^^^^^^^^ unsatisfied trait bound
     |
     = help: the trait `typestate_groups::SameSize<typestate_groups::PinnedTypeSize<RawGroup, u8, 1>>` is not implemented for `typestate_groups::PinnedTypeSize<PairGroup, [u8; 2], 2>`
@@ -244,18 +415,18 @@ help: the trait `typestate_groups::SameSize<typestate_groups::UnpinnedTypeSize<G
     | |_______________________________________________________________________^
     = note: required for `typestate_groups::PinnedTypeLayout<PairGroup, [u8; 2], 2, 1>` to implement `typestate_groups::SameLayout<typestate_groups::PinnedTypeLayout<RawGroup, u8, 1, 1>>`
 note: required for `Small<Raw>` to implement `TransmutableState<Pair>`
-   --> tests/ui/cast_state.rs:40:1
+   --> tests/ui/cast_state.rs:41:1
     |
- 40 | #[typestate(unsafe_transmute = true)]
+ 41 | #[typestate(unsafe_transmute = true)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
- 41 | struct Small<S: Byte> {
+ 42 | struct Small<S: Byte> {
     |        ^^^^^^^^^^^^^^
-note: required for `Small<Raw>` to implement `CastableState<Pair, typestate_groups::Owned>`
-   --> tests/ui/cast_state.rs:40:1
+note: required for `Small<Raw>` to implement `CastableState<Pair, ByValue>`
+   --> tests/ui/cast_state.rs:41:1
     |
- 40 | #[typestate(unsafe_transmute = true)]
+ 41 | #[typestate(unsafe_transmute = true)]
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
- 41 | struct Small<S: Byte> {
+ 42 | struct Small<S: Byte> {
     |        ^^^^^^^^^^^^^^
 note: required by a bound in `cast_state`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -263,34 +434,37 @@ note: required by a bound in `cast_state`
     |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     |        ---------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Owned>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: add `unsafe_transmute = true` to the `#[typestate]` of `Opaque<Raw>` to cast it into state `Flag`
-   --> tests/ui/cast_state.rs:142:17
+   --> tests/ui/cast_state.rs:193:17
     |
-142 |     let _ = raw.cast_state::<Flag>();
+193 |     let _ = raw.cast_state::<Flag>();
     |                 ^^^^^^^^^^ unsatisfied trait bound
     |
-help: the trait `CastableState<Flag, typestate_groups::Owned>` is not implemented for `Opaque<Raw>`
-   --> tests/ui/cast_state.rs:46:1
+help: the trait `CastableState<Flag, ByValue>` is not implemented for `Opaque<Raw>`
+   --> tests/ui/cast_state.rs:47:1
     |
- 46 | struct Opaque<S: Byte> {
+ 47 | struct Opaque<S: Byte> {
     | ^^^^^^^^^^^^^^^^^^^^^^
     = note: or convert by value with `morph`
-    = help: the following other types implement trait `CastableState<To, A>`:
-              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
-              `Small<S>` implements `CastableState<__TypestateGroupsTargetState, typestate_groups::Exclusive>`
-              `Small<S>` implements `CastableState<__TypestateGroupsTargetState, typestate_groups::Owned>`
-              `Small<S>` implements `CastableState<__TypestateGroupsTargetState, typestate_groups::Shared>`
+    = help: the following other types implement trait `CastableState<To, R>`:
+              `Counted<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
+              `Counted<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
+              `Counted<S>` implements `CastableState<__TypestateGroupsTargetState, ByValue>`
+              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
+              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
+              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, ByValue>`
+              `Pointer<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
+              `Pointer<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
+            and $N others
 note: required by a bound in `cast_state`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
     |
     |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     |        ---------- required by a bound in this associated function
     |     where
-    |         Self: CastableState<To, Owned>,
-    |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`

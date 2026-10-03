@@ -1,7 +1,7 @@
 //! Bit-reinterpreting transitions between a container's states.
 
 use crate::{
-    CastableState, Exclusive, Owned, Restate, Shared, State, WithState,
+    ByMut, ByRef, ByValue, CastableState, Restate, State, WithState,
 };
 
 /// Bit-reinterprets a container as the same container in another
@@ -81,8 +81,8 @@ pub trait Isomorphic: WithState + Sized {
 
     /// Reinterprets `self` in state `To`.
     ///
-    /// Compiles only when every field that changes type holds bits valid
-    /// in `To`, as [`CastableState`] proves.
+    /// Compiles only when every field that changes type, and every
+    /// pointee, holds bits valid in `To`, as [`CastableState`] proves.
     ///
     /// ```
     /// use typestate_groups::{Isomorphic, group, state, state_types, typestate};
@@ -119,10 +119,11 @@ pub trait Isomorphic: WithState + Sized {
     /// ```
     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     where
-        Self: CastableState<To, Owned>,
+        Self: CastableState<To, ByValue>,
     {
-        // SAFETY: `CastableState<To, Owned>` proves every field of `self`
-        // valid in `To`.
+        const { <Self as CastableState<To, ByValue>>::POINTEE_CHECK }
+        // SAFETY: `CastableState<To, ByValue>` proves every field of
+        // `self` valid in `To`.
         unsafe { self.transmute_state() }
     }
 
@@ -132,9 +133,10 @@ pub trait Isomorphic: WithState + Sized {
     /// in `To` and has no `UnsafeCell` in either state.
     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
     where
-        Self: CastableState<To, Shared>,
+        Self: CastableState<To, ByRef>,
     {
-        // SAFETY: `CastableState<To, Shared>` proves every field of `self`
+        const { <Self as CastableState<To, ByRef>>::POINTEE_CHECK }
+        // SAFETY: `CastableState<To, ByRef>` proves every field of `self`
         // valid in `To` and free of cells that could be written through
         // the alias.
         unsafe { self.transmute_state_ref() }
@@ -149,9 +151,10 @@ pub trait Isomorphic: WithState + Sized {
         &mut self,
     ) -> &mut <Self as Restate<To>>::Target
     where
-        Self: CastableState<To, Exclusive>,
+        Self: CastableState<To, ByMut>,
     {
-        // SAFETY: `CastableState<To, Exclusive>` proves every field valid
+        const { <Self as CastableState<To, ByMut>>::POINTEE_CHECK }
+        // SAFETY: `CastableState<To, ByMut>` proves every field valid
         // in both states, so `self` stays valid after the borrow ends.
         unsafe { self.transmute_state_mut() }
     }

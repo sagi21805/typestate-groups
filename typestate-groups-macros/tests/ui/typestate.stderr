@@ -46,7 +46,7 @@ error: replace `S::Marker` with `PhantomData<S>`: a group marker has no value to
 69 |     marker: S::Marker,
    |                ^^^^^^
 
-error: add a field of type `S::Assoc`, or remove `unsafe_transmute = true`
+error: add a field of type `S::Assoc` or a pointer to one, or remove `unsafe_transmute = true`
   --> tests/ui/typestate.rs:73:8
    |
 73 | struct NoProjection<S> {
@@ -58,29 +58,11 @@ error: add `C` to this `#[repr(..)]`: `unsafe_transmute = true` needs a guarante
 79 | #[repr(Rust)]
    | ^^^^^^^^^^^^^
 
-error: make this field `S::Assoc`, a ZST or a type without `S`, or remove `unsafe_transmute = true` and convert with `morph`
-  --> tests/ui/typestate.rs:88:13
-   |
-88 |     values: [S::Value; 2],
-   |             ^^^^^^^^^^^^^
-
-error: make this field `S::Assoc`, a ZST or a type without `S`, or remove `unsafe_transmute = true` and convert with `morph`
-  --> tests/ui/typestate.rs:94:13
-   |
-94 |     marker: S,
-   |             ^
-
-error: make this field `S::Assoc`, a ZST or a type without `S`, or remove `unsafe_transmute = true` and convert with `morph`
-  --> tests/ui/typestate.rs:99:12
-   |
-99 |     value: <S as Meta>::Value,
-   |            ^^^^^^^^^^^^^^^^^^
-
-error: make this field `S::Assoc`, a ZST or a type without `S`, or remove `unsafe_transmute = true` and convert with `morph`
-   --> tests/ui/typestate.rs:104:12
+error: add a field of type `S::Assoc` or a pointer to one, or remove `unsafe_transmute = true`
+   --> tests/ui/typestate.rs:128:8
     |
-104 |     value: Option<S::Value>,
-    |            ^^^^^^^^^^^^^^^^
+128 | struct PhantomOnly<S: Meta> {
+    |        ^^^^^^^^^^^
 
 error[E0589]: invalid alignment value: not a power of two
   --> tests/ui/typestate.rs:56:57
@@ -93,3 +75,390 @@ error[E0589]: invalid alignment value: larger than 2^29
    |
 61 | #[typestate(state = S, unsafe_transmute = true, align = 1073741824)]
    |                                                         ^^^^^^^^^^
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+  --> tests/ui/typestate.rs:89:13
+   |
+89 |     values: [S::Value; 2],
+   |             ^^^^^^^^^^^^^ `[<S as Meta>::Value; 2]` may hold the state's types inline
+   |
+   = help: the trait `Indirect` is not implemented for `[<S as Meta>::Value; 2]`
+   = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `Repointed`
+  --> $WORKSPACE/typestate-groups/src/indirect.rs
+   |
+   | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+   |                                 ^^^^^^^^ required by this bound in `Repointed`
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+   |
+87 | #[typestate(state = S, unsafe_transmute = true)], [<S as Meta>::Value; 2]: Indirect
+   |                                                 +++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+  --> tests/ui/typestate.rs:89:13
+   |
+89 |     values: [S::Value; 2],
+   |             ^^^^^^^^^^^^^ `[<S as Meta>::Value; 2]` may hold the state's types inline
+   |
+   = help: the trait `Indirect` is not implemented for `[<S as Meta>::Value; 2]`
+   = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect`
+  --> $WORKSPACE/typestate-groups/src/cast.rs
+   |
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+   |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+   |
+87 | #[typestate(state = S, unsafe_transmute = true)], [<S as Meta>::Value; 2]: Indirect
+   |                                                 +++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+  --> tests/ui/typestate.rs:95:13
+   |
+95 |     marker: S,
+   |             ^ `S` may hold the state's types inline
+   |
+   = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `Repointed`
+  --> $WORKSPACE/typestate-groups/src/indirect.rs
+   |
+   | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+   |                                 ^^^^^^^^ required by this bound in `Repointed`
+help: consider further restricting type parameter `S` with trait `Indirect`
+   |
+93 | struct BareState<S: Meta + typestate_groups::Indirect> {
+   |                          ++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+  --> tests/ui/typestate.rs:95:13
+   |
+95 |     marker: S,
+   |             ^ `S` may hold the state's types inline
+   |
+   = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect`
+  --> $WORKSPACE/typestate-groups/src/cast.rs
+   |
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+   |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+help: consider further restricting type parameter `S` with trait `Indirect`
+   |
+93 | struct BareState<S: Meta + typestate_groups::Indirect> {
+   |                          ++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:100:12
+    |
+100 |     value: <S as Meta>::Value,
+    |            ^ `<S as Meta>::Value` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `<S as Meta>::Value`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `Repointed`
+   --> $WORKSPACE/typestate-groups/src/indirect.rs
+    |
+    | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+    |                                 ^^^^^^^^ required by this bound in `Repointed`
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:100:12
+    |
+100 |     value: <S as Meta>::Value,
+    |            ^ `<S as Meta>::Value` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `<S as Meta>::Value`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+
+error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<<S as Meta>::Value>` may not keep its layout across states
+   --> tests/ui/typestate.rs:105:12
+    |
+105 |     value: Option<S::Value>,
+    |            ^^^^^^ `Option<<S as Meta>::Value>` holds `<S as Meta>::Value` inline
+    |
+    = help: the trait `NullNiche` is not implemented for `<S as Meta>::Value`
+    = note: `NullNiche` is implemented for `NonNull`, `&`, `&mut`, `Box`, `Arc` and `Rc`
+    = note: required for `Option<<S as Meta>::Value>` to implement `Indirect`
+note: required by a bound in `Repointed`
+   --> $WORKSPACE/typestate-groups/src/indirect.rs
+    |
+    | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+    |                                 ^^^^^^^^ required by this bound in `Repointed`
+
+error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<<S as Meta>::Value>` may not keep its layout across states
+   --> tests/ui/typestate.rs:105:12
+    |
+105 |     value: Option<S::Value>,
+    |            ^^^^^^ `Option<<S as Meta>::Value>` holds `<S as Meta>::Value` inline
+    |
+    = help: the trait `NullNiche` is not implemented for `<S as Meta>::Value`
+    = note: `NullNiche` is implemented for `NonNull`, `&`, `&mut`, `Box`, `Arc` and `Rc`
+    = note: required for `Option<<S as Meta>::Value>` to implement `Indirect`
+note: required by a bound in `typestate_groups::CastIndirect`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+
+error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<*const <S as Meta>::Value>` may not keep its layout across states
+   --> tests/ui/typestate.rs:111:12
+    |
+111 |     value: Option<*const S::Value>,
+    |            ^^^^^^ `Option<*const <S as Meta>::Value>` holds `*const <S as Meta>::Value` inline
+    |
+    = help: the trait `NullNiche` is not implemented for `*const <S as Meta>::Value`
+    = note: `NullNiche` is implemented for `NonNull`, `&`, `&mut`, `Box`, `Arc` and `Rc`
+    = help: the following other types implement trait `NullNiche`:
+              &T
+              &mut T
+              Arc<T>
+              Box<T>
+              NonNull<T>
+              Rc<T>
+    = note: required for `Option<*const <S as Meta>::Value>` to implement `Indirect`
+note: required by a bound in `Repointed`
+   --> $WORKSPACE/typestate-groups/src/indirect.rs
+    |
+    | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+    |                                 ^^^^^^^^ required by this bound in `Repointed`
+
+error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<*const <S as Meta>::Value>` may not keep its layout across states
+   --> tests/ui/typestate.rs:111:12
+    |
+111 |     value: Option<*const S::Value>,
+    |            ^^^^^^ `Option<*const <S as Meta>::Value>` holds `*const <S as Meta>::Value` inline
+    |
+    = help: the trait `NullNiche` is not implemented for `*const <S as Meta>::Value`
+    = note: `NullNiche` is implemented for `NonNull`, `&`, `&mut`, `Box`, `Arc` and `Rc`
+    = help: the following other types implement trait `NullNiche`:
+              &T
+              &mut T
+              Arc<T>
+              Box<T>
+              NonNull<T>
+              Rc<T>
+    = note: required for `Option<*const <S as Meta>::Value>` to implement `Indirect`
+note: required by a bound in `typestate_groups::CastIndirect`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:118:13
+    |
+118 |     values: Vec<S::Value>,
+    |             ^^^ `Vec<<S as Meta>::Value>` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `Vec<<S as Meta>::Value>`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `Repointed`
+   --> $WORKSPACE/typestate-groups/src/indirect.rs
+    |
+    | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+    |                                 ^^^^^^^^ required by this bound in `Repointed`
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+    |
+116 | #[typestate(state = S, unsafe_transmute = true)], Vec<<S as Meta>::Value>: Indirect
+    |                                                 +++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:118:13
+    |
+118 |     values: Vec<S::Value>,
+    |             ^^^ `Vec<<S as Meta>::Value>` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `Vec<<S as Meta>::Value>`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+    |
+116 | #[typestate(state = S, unsafe_transmute = true)], Vec<<S as Meta>::Value>: Indirect
+    |                                                 +++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:123:12
+    |
+123 |     value: Result<S::Value, ()>,
+    |            ^^^^^^ `Result<<S as Meta>::Value, ()>` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `Result<<S as Meta>::Value, ()>`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `Repointed`
+   --> $WORKSPACE/typestate-groups/src/indirect.rs
+    |
+    | pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+    |                                 ^^^^^^^^ required by this bound in `Repointed`
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+    |
+121 | #[typestate(state = S, unsafe_transmute = true)], Result<<S as Meta>::Value, ()>: Indirect
+    |                                                 ++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:123:12
+    |
+123 |     value: Result<S::Value, ()>,
+    |            ^^^^^^ `Result<<S as Meta>::Value, ()>` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `Result<<S as Meta>::Value, ()>`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect`
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+    |
+121 | #[typestate(state = S, unsafe_transmute = true)], Result<<S as Meta>::Value, ()>: Indirect
+    |                                                 ++++++++++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+  --> tests/ui/typestate.rs:89:13
+   |
+89 |     values: [S::Value; 2],
+   |             ^^^^^^^^^^^^^ `[<S as Meta>::Value; 2]` may hold the state's types inline
+   |
+   = help: the trait `Indirect` is not implemented for `[<S as Meta>::Value; 2]`
+   = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+  --> $WORKSPACE/typestate-groups/src/cast.rs
+   |
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+   |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+   |     const SAME_POINTEE_LAYOUT: bool;
+   |           ------------------- required by a bound in this associated constant
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+   |
+87 | #[typestate(state = S, unsafe_transmute = true)], [<S as Meta>::Value; 2]: Indirect
+   |                                                 +++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+  --> tests/ui/typestate.rs:95:13
+   |
+95 |     marker: S,
+   |             ^ `S` may hold the state's types inline
+   |
+   = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+  --> $WORKSPACE/typestate-groups/src/cast.rs
+   |
+   | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+   |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+   |     const SAME_POINTEE_LAYOUT: bool;
+   |           ------------------- required by a bound in this associated constant
+help: consider further restricting type parameter `S` with trait `Indirect`
+   |
+93 | struct BareState<S: Meta + typestate_groups::Indirect> {
+   |                          ++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:100:12
+    |
+100 |     value: <S as Meta>::Value,
+    |            ^^^^^^^^^^^^^^^^^^ `<S as Meta>::Value` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `<S as Meta>::Value`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+    |     const SAME_POINTEE_LAYOUT: bool;
+    |           ------------------- required by a bound in this associated constant
+
+error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<<S as Meta>::Value>` may not keep its layout across states
+   --> tests/ui/typestate.rs:105:12
+    |
+105 |     value: Option<S::Value>,
+    |            ^^^^^^^^^^^^^^^^ `Option<<S as Meta>::Value>` holds `<S as Meta>::Value` inline
+    |
+    = help: the trait `NullNiche` is not implemented for `<S as Meta>::Value`
+    = note: `NullNiche` is implemented for `NonNull`, `&`, `&mut`, `Box`, `Arc` and `Rc`
+    = note: required for `Option<<S as Meta>::Value>` to implement `Indirect`
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+    |     const SAME_POINTEE_LAYOUT: bool;
+    |           ------------------- required by a bound in this associated constant
+
+error[E0277]: wrap a non-null pointer in this `Option`, or convert with `morph`: `Option<*const <S as Meta>::Value>` may not keep its layout across states
+   --> tests/ui/typestate.rs:111:12
+    |
+111 |     value: Option<*const S::Value>,
+    |            ^^^^^^^^^^^^^^^^^^^^^^^ `Option<*const <S as Meta>::Value>` holds `*const <S as Meta>::Value` inline
+    |
+    = help: the trait `NullNiche` is not implemented for `*const <S as Meta>::Value`
+    = note: `NullNiche` is implemented for `NonNull`, `&`, `&mut`, `Box`, `Arc` and `Rc`
+    = help: the following other types implement trait `NullNiche`:
+              &T
+              &mut T
+              Arc<T>
+              Box<T>
+              NonNull<T>
+              Rc<T>
+    = note: required for `Option<*const <S as Meta>::Value>` to implement `Indirect`
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+    |     const SAME_POINTEE_LAYOUT: bool;
+    |           ------------------- required by a bound in this associated constant
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:118:13
+    |
+118 |     values: Vec<S::Value>,
+    |             ^^^^^^^^^^^^^ `Vec<<S as Meta>::Value>` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `Vec<<S as Meta>::Value>`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+    |     const SAME_POINTEE_LAYOUT: bool;
+    |           ------------------- required by a bound in this associated constant
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+    |
+116 | #[typestate(state = S, unsafe_transmute = true)], Vec<<S as Meta>::Value>: Indirect
+    |                                                 +++++++++++++++++++++++++++++++++++
+
+error[E0277]: make this field `S::Assoc`, a ZST, a type without the state, or a pointer that implements `Indirect`; or remove `unsafe_transmute = true` and convert with `morph`
+   --> tests/ui/typestate.rs:123:12
+    |
+123 |     value: Result<S::Value, ()>,
+    |            ^^^^^^^^^^^^^^^^^^^^ `Result<<S as Meta>::Value, ()>` may hold the state's types inline
+    |
+    = help: the trait `Indirect` is not implemented for `Result<<S as Meta>::Value, ()>`
+    = note: `Indirect` is implemented for `*const`, `*mut`, `NonNull`, `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six
+note: required by a bound in `typestate_groups::CastIndirect::SAME_POINTEE_LAYOUT`
+   --> $WORKSPACE/typestate-groups/src/cast.rs
+    |
+    | pub unsafe trait CastIndirect<Src: Indirect, R: CastReceiver>:
+    |                                    ^^^^^^^^ required by this bound in `CastIndirect::SAME_POINTEE_LAYOUT`
+...
+    |     const SAME_POINTEE_LAYOUT: bool;
+    |           ------------------- required by a bound in this associated constant
+help: consider extending the `where` clause, but there might be an alternative better way to express this requirement
+    |
+121 | #[typestate(state = S, unsafe_transmute = true)], Result<<S as Meta>::Value, ()>: Indirect
+    |                                                 ++++++++++++++++++++++++++++++++++++++++++
