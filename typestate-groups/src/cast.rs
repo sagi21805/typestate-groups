@@ -14,7 +14,7 @@ use crate::{State, TransmutableState};
 /// gets. A `&mut` field shows the difference. Here `Flag` holds a `bool`
 /// and `Raw` a `u8`:
 ///
-/// ```
+/// ```compile_fail,E0277
 /// # use typestate_groups::{Isomorphic, group, state, state_types, typestate};
 /// # #[state_types]
 /// # trait Byte {
