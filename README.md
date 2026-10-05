@@ -8,18 +8,13 @@
 Typestate-based grouping types for Rust.
 
 A typestate container changes its field types with its state. This crate
-lets you group those states by the types they carry, write one trait impl
-per group, and move a container between states by value or in place.
-
-## Quick start
-
-1. List the types that change with the state in a `#[state_types]` trait.
-2. Declare each state with `#[state]`.
-3. Group states with `#[group(Name)]` and set the types for the group.
-4. Mark the container `#[typestate]`.
+groups states by the types they carry, so you write one trait impl per
+group, and moves a container between states by value or in place.
 
 ```rust
-use typestate_groups::{group, state, state_types, typestate};
+use typestate_groups::{
+    group, group_impl, group_trait, state, state_types, typestate,
+};
 
 #[state_types]
 trait Stage {
@@ -36,55 +31,7 @@ struct Calibrated;
 // Raw ADC counts before calibration, volts after.
 #[group(Counts)]
 impl Stage for (Sampled, Filtered) {
-    type Sample = u16;
-}
-
-#[group(Volts)]
-impl Stage for (Calibrated,) {
-    type Sample = f32;
-}
-
-#[typestate]
-struct Frame<S: Stage> {
-    sensor: u32,
-    sample: S::Sample,
-}
-
-fn main() {
-    let raw = Frame::<Sampled> { sensor: 7, sample: 4095 };
-    let volts = Frame::<Calibrated> { sensor: 7, sample: 3.3 };
-
-    assert_eq!(raw.sample, 4095u16);
-    assert_eq!(volts.sample, 3.3f32);
-}
-```
-
-`Frame<Sampled>` holds a `u16` and `Frame<Calibrated>` holds an `f32`.
-
-## One impl per group
-
-Declare a trait with `#[group_trait(by = Stage)]` and implement it once
-per group with `#[group_impl(Group)]`. Every state in the group gets the
-impl, and the impl sees the group's concrete types:
-
-```rust
-use typestate_groups::{group, group_impl, group_trait, state, state_types, typestate};
-
-#[state_types]
-trait Stage {
-    type Sample;
-}
-
-#[state]
-struct Sampled;
-#[state]
-struct Filtered;
-#[state]
-struct Calibrated;
-
-#[group(Counts)]
-impl Stage for (Sampled, Filtered) {
-    type Sample = u16;
+    type Sample = u32;
 }
 
 #[group(Volts)]
@@ -126,60 +73,48 @@ fn main() {
 }
 ```
 
+## Guide
+
+Each step below adds to the example above.
+
+### 1. States and groups
+
+- `#[state_types]` lists the types that change with the state.
+- `#[state]` declares a state.
+- `#[group(Name)]` puts a tuple of states in a group and sets their types.
+- `#[typestate]` marks the container.
+
+`Frame<Sampled>` holds a `u32` and `Frame<Calibrated>` holds an `f32`.
+
+### 2. One impl per group
+
+`#[group_trait(by = Stage)]` declares a trait that you implement once per
+group with `#[group_impl(Group)]`. Every state in the group gets the
+impl, so adding a state to `(Sampled, Filtered)` gives it `report()` with
+no new code.
+
 Plain Rust rejects this pair with `E0119: conflicting implementations`,
 because coherence ignores associated types:
 
 ```rust,ignore
-impl<S: Stage<Sample = u16>> Report for Frame<S> { .. }
+impl<S: Stage<Sample = u32>> Report for Frame<S> { .. }
 impl<S: Stage<Sample = f32>> Report for Frame<S> { .. }
 ```
 
-Add a state to a group's tuple and it gets `report()` with no new code.
-
-## Changing state by value
+### 3. Changing state by value
 
 Implement `MorphFrom` to say how one state becomes another, then call
 `morph::<Target>()`. For a conversion that can fail, implement
 `TryMorphFrom` and call `try_morph::<Target>()`:
 
-```rust
-use typestate_groups::{
-    MorphFrom, Morphic, TryMorphFrom, group, state, state_types, typestate,
-};
-
-#[state_types]
-trait Stage {
-    type Sample;
-}
-
-#[state]
-struct Sampled;
-#[state]
-struct Filtered;
-#[state]
-struct Calibrated;
-
-#[group(Counts)]
-impl Stage for (Sampled, Filtered) {
-    type Sample = u16;
-}
-
-#[group(Volts)]
-impl Stage for (Calibrated,) {
-    type Sample = f32;
-}
-
-#[typestate]
-struct Frame<S: Stage> {
-    sensor: u32,
-    sample: S::Sample,
-}
+```rust,ignore
+use typestate_groups::{MorphFrom, Morphic, TryMorphFrom};
 
 // A saturated reading can't be filtered.
 impl TryMorphFrom<Frame<Sampled>> for Frame<Filtered> {
-    type Error = u16;
+    type Error = u32;
 
-    fn try_morph_from(src: Frame<Sampled>) -> Result<Self, u16> {
+    fn try_morph_from(src: Frame<Sampled>) -> Result<Self, u32> {
         match src.sample {
             4095 => Err(src.sample),
             sample => Ok(Frame { sensor: src.sensor, sample }),
@@ -191,85 +126,58 @@ impl MorphFrom<Frame<Filtered>> for Frame<Calibrated> {
     fn morph_from(src: Frame<Filtered>) -> Self {
         Frame {
             sensor: src.sensor,
-            sample: f32::from(src.sample) * 3.3 / 4095.0,
+            sample: src.sample as f32 * 3.3 / 4095.0,
         }
     }
 }
 
-fn main() {
-    let saturated = Frame::<Sampled> { sensor: 7, sample: 4095 };
-    assert_eq!(saturated.try_morph::<Filtered>().err(), Some(4095));
-
-    let frame = Frame::<Sampled> { sensor: 7, sample: 4095 / 2 };
-    let volts = frame.try_morph::<Filtered>().unwrap().morph::<Calibrated>();
-    assert!((volts.sample - 1.65).abs() < 0.01);
-}
+let frame = Frame::<Sampled> { sensor: 7, sample: 2047 };
+let volts = frame.try_morph::<Filtered>()?.morph::<Calibrated>();
 ```
 
-One impl can be generic over both states, such as
-`impl<S: Stage, S2: Stage> MorphFrom<Frame<S>> for Frame<S2> where
-S2::Sample: From<S::Sample>`.
+One impl can cover many pairs, such as `impl<S: Stage, S2: Stage>
+MorphFrom<Frame<S>> for Frame<S2> where S2::Sample: From<S::Sample>`.
 
-## Reinterpreting in place
+### 4. Reinterpreting in place
 
 When two states hold types of the same size, you can reinterpret the
-container's bits instead of converting field by field:
+container's bits instead of converting each field. Add a `Centered` state
+whose signed counts share the bits of `Filtered`'s:
 
-1. Add `#[size(N)]` to each associated type in the groups you want to
-   reinterpret between.
-2. Add `unsafe_transmute = true` to `#[typestate]`. It adds
-   `#[repr(C)]`, and `align = N` raises the container's alignment when
-   the states' types disagree on it.
-3. Call `cast_state::<Target>()`, or its `_ref` and `_mut` forms.
-
-```rust
-use typestate_groups::{Isomorphic, group, state, state_types, typestate};
-
-#[state_types]
-trait Wire {
-    type Addr;
-}
+```rust,ignore
+use typestate_groups::Isomorphic;
 
 #[state]
-struct Received;
-#[state]
-struct Routed;
+struct Centered;
 
-#[group(Bytes)]
-impl Wire for (Received,) {
+#[group(SignedCounts)]
+impl Stage for (Centered,) {
     #[size(4)]
-    type Addr = [u8; 4];
+    type Sample = i32;
 }
 
-#[group(Native)]
-impl Wire for (Routed,) {
-    #[size(4)]
-    type Addr = u32;
+// Also add `#[size(4)]` to `Sample` in `Counts` and `Volts`.
+
+#[typestate(unsafe_transmute = true)]
+struct Frame<S: Stage> {
+    sensor: u32,
+    sample: S::Sample,
 }
 
-// `[u8; 4]` is 1-aligned and `u32` is 4-aligned.
-#[typestate(unsafe_transmute = true, align = 4)]
-struct Header<S: Wire> {
-    dst: S::Addr,
-    ttl: u8,
-}
-
-fn main() {
-    let header = Header::<Received> { dst: [10, 0, 0, 2], ttl: 64 };
-    let routed = header.cast_state::<Routed>();
-
-    assert_eq!(routed.dst, u32::from_ne_bytes([10, 0, 0, 2]));
-    assert_eq!(routed.ttl, 64);
-}
+let frame = Frame::<Filtered> { sensor: 7, sample: u32::MAX };
+assert_eq!(frame.cast_state::<Centered>().sample, -1);
 ```
 
-The size and layout checks run at compile time. Give `Routed` a `u64`
-address and the build fails asking you to fix `#[size(4)]`.
+`unsafe_transmute = true` adds `#[repr(C)]`. When the states' types
+disagree on alignment, such as `[u8; 4]` and `u32`, add `align = 4`.
 
-`cast_state` also checks that every field that changes type holds bits
-valid in the new state, using [`zerocopy`](https://docs.rs/zerocopy):
-the old type must be `IntoBytes` (no padding) and the new one `FromBytes`
-(every bit pattern valid). Casting a `u8` into a `bool` fails with
+The size and layout checks run at compile time. Give `Centered` an `i64`
+and the build fails asking you to fix `#[size(4)]`.
+
+`cast_state` also checks with [`zerocopy`](https://docs.rs/zerocopy) that
+every field that changes type holds bits valid in the new state. The old
+type must be `IntoBytes` (no padding) and the new one `FromBytes` (every
+bit pattern valid). Casting a `u8` into a `bool` fails with
 ``convert with `morph`: `u8` may hold bits that are not a valid `bool` ``.
 
 | Method | Each changed field also needs |
@@ -282,118 +190,60 @@ When a type is valid only for some bit patterns, such as `u32` into
 `char`, call `unsafe { transmute_state() }` and run `cargo miri test` on
 the code that calls it.
 
-## Pointer fields
+### 5. Pointer fields
 
-A reinterpreted container can also hold the state's types behind a
-pointer. A pointer to a sized type has the same layout whatever it
-points at, so the pointee needs no `#[size(N)]`. The field's type must
-implement `Indirect`, which the crate implements for:
+A reinterpreted container can hold the state's types behind a pointer.
+The pointee needs no `#[size(N)]`, because a pointer to a sized type has
+the same layout whatever it points at:
 
-- `*const T`, `*mut T`, `NonNull<T>`, `&T`, `&mut T`
-- `Box<T>`, `Arc<T>`, `Rc<T>`, with the default `alloc` feature
-- `Option<P>` when `P` is one of the non-null pointers above
-
-```rust
-use typestate_groups::{Isomorphic, group, state, state_types, typestate};
-
-#[state_types]
-trait Encoding {
-    type Word;
-}
-
-#[state]
-struct Unsigned;
-#[state]
-struct Signed;
-
-#[group(UnsignedGroup)]
-impl Encoding for (Unsigned,) {
-    type Word = u32;
-}
-
-#[group(SignedGroup)]
-impl Encoding for (Signed,) {
-    type Word = i32;
-}
-
+```rust,ignore
 #[typestate(unsafe_transmute = true)]
-struct Buffer<'a, S: Encoding> {
-    owned: Box<S::Word>,
-    borrowed: Option<&'a S::Word>,
+struct Window<'a, S: Stage> {
+    latest: Box<S::Sample>,
+    previous: Option<&'a S::Sample>,
 }
 
-fn main() {
-    let word = u32::MAX;
-    let unsigned = Buffer::<Unsigned> {
-        owned: Box::new(u32::MAX),
-        borrowed: Some(&word),
-    };
-    let signed = unsigned.cast_state::<Signed>();
-
-    assert_eq!(*signed.owned, -1);
-    assert_eq!(signed.borrowed, Some(&-1));
-}
+let previous = u32::MAX;
+let window = Window::<Filtered> {
+    latest: Box::new(u32::MAX),
+    previous: Some(&previous),
+};
+let centered = window.cast_state::<Centered>();
+assert_eq!(centered.previous, Some(&-1));
 ```
 
-`cast_state` checks a pointee as if the container held it by value, and
-the pointee must keep its size and alignment. Others may see a pointee
-through the pointer, so some pointers need the stricter checks:
+The field's type must implement `Indirect`. The crate implements it for
+`*const T`, `*mut T`, `NonNull<T>`, `&T` and `&mut T`, for `Box<T>`,
+`Arc<T>` and `Rc<T>` with the default `alloc` feature, and for `Option<P>`
+when `P` is one of the non-null pointers.
 
-| Pointer | Pointee also needs |
+A pointee must keep its size and alignment. Others may see it through
+the pointer, so each pointer names the access its pointee gets under
+each cast method, and `Permits` checks that access with zerocopy's
+traits:
+
+| Access | Needs of `Src` and `Dst` |
 |---|---|
-| `Box<T>` | nothing more |
-| `&T`, `Arc<T>`, `Rc<T>` | the `cast_state_ref` check |
-| `&mut T` | the `cast_state_mut` check, except under `cast_state_ref` |
-| `*const T`, `*mut T`, `NonNull<T>` | both |
+| `Read` | `Src: IntoBytes`, `Dst: FromBytes` |
+| `ReadShared` | `Read`, and both `Immutable` |
+| `ReadWrite` | both `IntoBytes + FromBytes` |
+| `ReadWriteShared` | `ReadWrite`, and both `Immutable` |
+
+| Pointer | `cast_state` | `cast_state_ref` | `cast_state_mut` |
+|---|---|---|---|
+| `Box<T>`, or by value | `Read` | `ReadShared` | `ReadWrite` |
+| `&T`, `Arc<T>`, `Rc<T>` | `ReadShared` | `ReadShared` | `ReadShared` |
+| `&mut T` | `ReadWrite` | `ReadShared` | `ReadWrite` |
+| `*const T`, `*mut T`, `NonNull<T>` | `ReadWriteShared` | `ReadWriteShared` | `ReadWriteShared` |
 
 `Vec` and `Result` don't implement `Indirect`. `Result<T, E>` stores `T`
-inline, and the compiler packs its tag into `T`'s invalid bit patterns:
-`Result<char, ()>` is 4 bytes while `Result<u32, ()>` is 8. `Vec<T>`
-holds a pointer, a length and a capacity, and Rust doesn't promise the
-same field order for every `T`.
+inline and packs its tag into `T`'s invalid bit patterns, so
+`Result<char, ()>` is 4 bytes while `Result<u32, ()>` is 8. Rust doesn't
+promise `Vec<T>` the same field order for every `T`.
 
-## Implementing the crate's traits on your own types
+### 6. Your own types
 
-### A pointer of your own
-
-Implement `Indirect` and `Repointed` to use your own pointer type as a
-field:
-
-```rust
-use core::ptr::NonNull;
-use typestate_groups::{Indirect, Repointed, UnknownPointee};
-
-#[repr(transparent)]
-struct Handle<T>(NonNull<T>);
-
-// SAFETY: `Handle` holds `T` only behind its `NonNull`, which anyone may
-// alias.
-unsafe impl<T> Indirect for Handle<T> {
-    type Pointee = T;
-    type Aliasing = UnknownPointee;
-}
-
-// SAFETY: `Handle<U>` is a `NonNull<U>`, laid out like `NonNull<T>`.
-unsafe impl<T, U> Repointed<Handle<T>> for Handle<U> {}
-```
-
-Both traits are `unsafe` because the casts trust them:
-
-- `Indirect` promises that the type holds no `Pointee` inline, and that
-  `Aliasing` covers everyone who may see the pointee. Pick
-  `UniquePointee` if only your type reaches it, `SharedPointee` if others
-  may read it, `LentPointee` if it goes back to a lender, and
-  `UnknownPointee` otherwise.
-- `Repointed<Src>` promises that `Self` is `Src` pointing at another
-  type, with the same size, alignment and field layout.
-
-Implement `NullNiche` too if your type is never null and `Option` of it
-keeps its layout. That makes `Option<YourPointer<T>>` a valid field.
-
-### Field types that cast
-
-`cast_state` accepts any field type that implements zerocopy's traits.
-Derive them on your own types:
+Derive zerocopy's traits to let your own types cast:
 
 ```rust
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -408,36 +258,52 @@ struct Rgba {
 }
 ```
 
-`IntoBytes` lets a cast read the type, `FromBytes` lets a cast produce it,
-and `Immutable` allows `cast_state_ref`.
+Implement `Indirect` and `Repointed` to use your own pointer as a field:
 
-### Conversions
+```rust
+use core::ptr::NonNull;
+use typestate_groups::{Indirect, ReadWriteShared, Repointed};
 
-`MorphFrom` and `TryMorphFrom` are ordinary traits you implement for each
-pair of states, as in [Changing state by value](#changing-state-by-value).
+#[repr(transparent)]
+struct Handle<T>(NonNull<T>);
 
-### What `#[typestate]` implements for you
+// SAFETY: `Handle` holds `T` only behind its `NonNull`, which anyone may
+// read or write through.
+unsafe impl<T> Indirect for Handle<T> {
+    type Pointee = T;
+    type CastState = ReadWriteShared;
+    type CastStateRef = ReadWriteShared;
+    type CastStateMut = ReadWriteShared;
+}
 
-`#[typestate]` implements `WithState` and `Restate`, and with
-`unsafe_transmute = true` also `TransmutableState` and `CastableState`.
-Don't implement these by hand: their safety depends on the layout checks
-the macro generates.
+// SAFETY: `Handle<U>` is a `NonNull<U>`, laid out like `NonNull<T>`.
+unsafe impl<T, U> Repointed<Handle<T>> for Handle<U> {}
+```
 
-## Crates
+Both traits are `unsafe` because the casts trust them. `Indirect`
+promises the type holds no `Pointee` inline and that each access covers
+everyone who may see the pointee. Copy the table row of the pointer yours
+behaves like, or pick `ReadWriteShared` for all three. `Repointed<Src>`
+promises `Self` is `Src` pointing at another type, with the same layout.
+Implement `NullNiche` too if your pointer is never null, to allow
+`Option<Handle<T>>`.
 
-- [`typestate-groups`](typestate-groups): the public API.
-- [`typestate-groups-macros`](typestate-groups-macros): the procedural
-  macros behind it.
+Don't implement `WithState`, `Restate`, `TransmutableState` or
+`CastableState` by hand. `#[typestate]` implements them, and their safety
+depends on the layout checks it generates.
 
 ## Installation
 
 ```toml
 [dependencies]
-typestate-groups = "0.2"
+typestate-groups = "0.x"
 ```
 
 The crate is `no_std`. Its default `alloc` feature adds the `Box`, `Arc`
-and `Rc` impls; turn it off with `default-features = false`.
+and `Rc` impls. Turn it off with `default-features = false`.
+
+The procedural macros live in
+[`typestate-groups-macros`](typestate-groups-macros).
 
 ## License
 
