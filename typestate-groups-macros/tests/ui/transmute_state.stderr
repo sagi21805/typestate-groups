@@ -141,11 +141,11 @@ help: the trait `typestate_groups::PinnedLayout<u8>` is not implemented for `Loo
     |
  45 | #[group(LooseGroup)]
     | ^^^^^^^^^^^^^^^^^^
-help: the trait `TransmutableState<__TypestateGroupsTargetState>` is implemented for `Wrap<S>`
+help: the trait `TransmutableState<__TypestateGroupsTargetState>` is conditionally implemented for `Wrap<S>`
    --> tests/ui/transmute_state.rs:76:1
     |
  76 | #[typestate(state = S, unsafe_transmute = true)]
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied requirement introduced here: `<Loose as Meta>::__TypestateGroupsLayoutType1: typestate_groups::SameLayout<<Small as Meta>::__TypestateGroupsLayoutType1>`
     = note: required for `typestate_groups::UnpinnedTypeSize<LooseGroup, u8>` to implement `typestate_groups::SameSize<typestate_groups::PinnedTypeSize<SmallGroup, u8, 1>>`
     = note: required for `typestate_groups::UnpinnedTypeLayout<LooseGroup, u8>` to implement `typestate_groups::SameLayout<typestate_groups::PinnedTypeLayout<SmallGroup, u8, 1, 1>>`
 note: required for `Wrap<Small>` to implement `TransmutableState<Loose>`
@@ -176,11 +176,11 @@ help: the trait `typestate_groups::PinnedLayout<u8>` is not implemented for `Loo
     |
  45 | #[group(LooseGroup)]
     | ^^^^^^^^^^^^^^^^^^
-help: the trait `TransmutableState<__TypestateGroupsTargetState>` is implemented for `Wrap<S>`
+help: the trait `TransmutableState<__TypestateGroupsTargetState>` is conditionally implemented for `Wrap<S>`
    --> tests/ui/transmute_state.rs:76:1
     |
  76 | #[typestate(state = S, unsafe_transmute = true)]
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied requirement introduced here: `<Small as Meta>::__TypestateGroupsLayoutType1: typestate_groups::SameLayout<<Loose as Meta>::__TypestateGroupsLayoutType1>`
     = note: required for `typestate_groups::PinnedTypeSize<SmallGroup, u8, 1>` to implement `typestate_groups::SameSize<typestate_groups::UnpinnedTypeSize<LooseGroup, u8>>`
     = note: required for `typestate_groups::PinnedTypeLayout<SmallGroup, u8, 1, 1>` to implement `typestate_groups::SameLayout<typestate_groups::UnpinnedTypeLayout<LooseGroup, u8>>`
 note: required for `Wrap<Loose>` to implement `TransmutableState<Small>`
