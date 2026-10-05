@@ -8,7 +8,9 @@ use crate::{Restate, State, WithState};
 /// Reuse a field's own conversion with `morph`.
 ///
 /// ```
-/// use typestate_groups::{MorphFrom, Morphic, group, state, state_types, typestate};
+/// use typestate_groups::{
+///     MorphFrom, Morphic, group, state, state_types, typestate,
+/// };
 ///
 /// #[state_types]
 /// trait Meta {

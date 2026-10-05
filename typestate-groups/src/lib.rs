@@ -14,14 +14,11 @@ mod morph;
 mod transmute;
 
 pub use cast::{
-    ByMut, ByRef, ByValue, CastFrom, CastIndirect, CastPointee,
-    CastReceiver, CastRefFrom, CastValid, CastableState,
+    Access, ByMut, ByRef, ByValue, CastBy, CastableState, Permits, Read,
+    ReadShared, ReadWrite, ReadWriteShared,
 };
 pub use error_helpers::PinnedLayout;
-pub use indirect::{
-    Aliasing, BorrowedPointee, Indirect, NullNiche, Repointed,
-    SharedPointee, UniquePointee, UnknownPointee,
-};
+pub use indirect::{Indirect, NullNiche, Repointed};
 pub use layout::{
     PinnedTypeAlignment, PinnedTypeLayout, PinnedTypeSize, SameAlignment,
     SameLayout, SameSize, TypeAlignment, TypeLayout, TypeSize,

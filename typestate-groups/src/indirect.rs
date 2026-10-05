@@ -2,24 +2,29 @@
 
 use core::ptr::NonNull;
 
-/// Holds [`Pointee`](Indirect::Pointee) only behind a pointer, so a
+use crate::Access;
+
+/// Reaches [`Pointee`](Indirect::Pointee) through a pointer, so a
 /// `#[typestate(unsafe_transmute = true)]` field of this type can point
-/// at a state-dependent type.
+/// at a state-dependent type. Each cast method names the [`Access`] the
+/// pointee gets, which [`crate::Permits`] checks.
 ///
 /// Implement it, with [`Repointed`], for your own pointer:
 ///
 /// ```
 /// use core::ptr::NonNull;
-/// use typestate_groups::{Indirect, Repointed, UnknownPointee};
+/// use typestate_groups::{Indirect, ReadWriteShared, Repointed};
 ///
 /// #[repr(transparent)]
 /// struct Handle<T>(NonNull<T>);
 ///
 /// // SAFETY: `Handle` holds `T` only behind its `NonNull`, which anyone
-/// // may alias.
+/// // may read or write through.
 /// unsafe impl<T> Indirect for Handle<T> {
 ///     type Pointee = T;
-///     type Aliasing = UnknownPointee;
+///     type CastState = ReadWriteShared;
+///     type CastStateRef = ReadWriteShared;
+///     type CastStateMut = ReadWriteShared;
 /// }
 ///
 /// // SAFETY: `Handle<U>` is a `NonNull<U>`, laid out like `NonNull<T>`.
@@ -28,23 +33,44 @@ use core::ptr::NonNull;
 ///
 /// # Safety
 ///
-/// `Self` must hold no `Pointee` inline, and
-/// [`Aliasing`](Indirect::Aliasing) must cover everyone who may see the
-/// pointee while `Self` lives.
+/// Each access must cover everyone who may see a `Pointee` that `Self`
+/// holds, inline or behind its pointer, while the container, cast with
+/// that method, lives, and after it ends. Pick each one by who else can
+/// reach the pointee.
+///
+/// - [`Read`](crate::Read) only when moving the container moves the only
+///   path to the pointee, as for `Box` cast by value.
+/// - [`ReadWrite`](crate::ReadWrite) when the pointer is unique but the
+///   pointee's owner reads it again once the cast ends, as for `&mut`.
+/// - [`ReadShared`](crate::ReadShared) when others may hold `&` to the
+///   pointee, as in every
+///   [`cast_state_ref`](crate::Isomorphic::cast_state_ref) and for every
+///   pointer that can be copied or cloned, such as `&` and `Arc`.
+/// - [`ReadWriteShared`](crate::ReadWriteShared) when anyone may read or
+///   write the pointee, as through a raw pointer.
+/// - An inline `Pointee` needs at least the access an inline field gets,
+///   which is `Read` by value, `ReadShared` through `&` and `ReadWrite`
+///   through `&mut`.
 #[diagnostic::on_unimplemented(
     message = "make this field `S::Assoc`, a ZST, a type without the \
                state, or a pointer that implements `Indirect`; or remove \
                `unsafe_transmute = true` and convert with `morph`",
-    label = "`{Self}` may hold the state's types inline",
+    label = "`{Self}` is not a pointer to the state's types",
     note = "`Indirect` is implemented for `*const`, `*mut`, `NonNull`, \
             `&`, `&mut`, `Box`, `Arc`, `Rc`, and `Option` of the last six"
 )]
 pub unsafe trait Indirect {
     /// The type behind the pointer.
     type Pointee;
-    /// Who else may see the pointee, which decides what a cast checks
-    /// of it.
-    type Aliasing: Aliasing;
+    /// How the pointee is used when the container is cast with
+    /// [`cast_state`](crate::Isomorphic::cast_state).
+    type CastState: Access;
+    /// How the pointee is used when the container is cast with
+    /// [`cast_state_ref`](crate::Isomorphic::cast_state_ref).
+    type CastStateRef: Access;
+    /// How the pointee is used when the container is cast with
+    /// [`cast_state_mut`](crate::Isomorphic::cast_state_mut).
+    type CastStateMut: Access;
 }
 
 /// `Self` is `Src` pointing at another type.
@@ -60,6 +86,35 @@ pub unsafe trait Indirect {
             layout"
 )]
 pub unsafe trait Repointed<Src: Indirect>: Indirect {}
+
+// SAFETY: a pointer to a sized `T` is one address whatever `T` is.
+// Anyone may read or write through a raw pointer. Others may read
+// through `&`. The owner of a `&mut` reads it again once the borrow
+// ends, unless the cast is only through `&`.
+indirect! {
+    impl<T, U> *const T => *const U:
+    cast(
+            val = ReadWriteShared,
+            ref = ReadWriteShared,
+            mut = ReadWriteShared,
+        );
+    impl<T, U> *mut T => *mut U:
+    cast(
+        val = ReadWriteShared,
+        ref = ReadWriteShared,
+        mut = ReadWriteShared,
+    );
+    impl<T, U> NonNull<T> => NonNull<U>:
+    cast(
+        val = ReadWriteShared,
+        ref = ReadWriteShared,
+        mut = ReadWriteShared,
+    );
+    impl<'a, T, U> &'a T => &'a U:
+    cast(val = ReadShared, ref = ReadShared, mut = ReadShared);
+    impl<'a, T, U> &'a mut T => &'a mut U:
+    cast(val = ReadWrite, ref = ReadShared, mut = ReadWrite);
+}
 
 /// `Option<Self>` has `Self`'s layout, with `None` as the null pointer.
 ///
@@ -77,44 +132,6 @@ pub unsafe trait Repointed<Src: Indirect>: Indirect {}
 )]
 pub unsafe trait NullNiche: Indirect {}
 
-/// Who else may see an [`Indirect`]'s pointee: [`UniquePointee`],
-/// [`SharedPointee`], [`BorrowedPointee`] or [`UnknownPointee`].
-pub trait Aliasing {}
-
-/// Only the pointer sees its pointee, as in `Box<T>`. A cast checks the
-/// pointee as the container's access does.
-pub enum UniquePointee {}
-
-/// Others may read the pointee, as through `&T`, `Arc<T>` or `Rc<T>`. A
-/// cast checks it as [`cast_state_ref`](crate::Isomorphic::cast_state_ref)
-/// does, even by value.
-pub enum SharedPointee {}
-
-/// The pointee is borrowed from an owner who uses it again after the
-/// borrow ends, as through `&mut T`. A cast
-/// checks it as [`cast_state_mut`](crate::Isomorphic::cast_state_mut)
-/// does, except through `&`.
-pub enum BorrowedPointee {}
-
-/// Anyone may read or write the pointee, as through `*const T`,
-/// `*mut T` or `NonNull<T>`. A cast checks it both ways.
-pub enum UnknownPointee {}
-
-impl Aliasing for UniquePointee {}
-impl Aliasing for SharedPointee {}
-impl Aliasing for BorrowedPointee {}
-impl Aliasing for UnknownPointee {}
-
-// SAFETY: a pointer to a sized `T` is one address whatever `T` is, and
-// each aliasing names who else may hold that address.
-indirect! {
-    impl<T, U> *const T => *const U: UnknownPointee;
-    impl<T, U> *mut T => *mut U: UnknownPointee;
-    impl<T, U> NonNull<T> => NonNull<U>: UnknownPointee;
-    impl<'a, T, U> &'a T => &'a U: SharedPointee;
-    impl<'a, T, U> &'a mut T => &'a mut U: BorrowedPointee;
-}
-
 // SAFETY: std guarantees `Option` of each a null niche.
 unsafe impl<T> NullNiche for NonNull<T> {}
 unsafe impl<T> NullNiche for &T {}
@@ -125,14 +142,18 @@ mod alloc_impls {
     use super::NullNiche;
     use alloc::{boxed::Box, rc::Rc, sync::Arc};
 
-    // SAFETY: `Box<T>` is one pointer, as std guarantees. `Arc<T>` and
-    // `Rc<T>` are one `NonNull` to a `repr(C)` header followed by `T`,
-    // which std doesn't document; `LAYOUT_CHECK` still compares their
-    // size.
+    // SAFETY: `Box<T>` is one pointer, as std guarantees, and only it
+    // reaches its pointee, so the pointee gets the container's access.
+    // `Arc<T>` and `Rc<T>` are one `NonNull` to a `repr(C)` header
+    // followed by `T`, which std doesn't document; `LAYOUT_CHECK` still
+    // compares their size. Others may read through them.
     indirect! {
-        impl<T, U> Box<T> => Box<U>: UniquePointee;
-        impl<T, U> Arc<T> => Arc<U>: SharedPointee;
-        impl<T, U> Rc<T> => Rc<U>: SharedPointee;
+        impl<T, U> Box<T> => Box<U>:
+            cast(val = Read, ref = ReadShared, mut = ReadWrite);
+        impl<T, U> Arc<T> => Arc<U>:
+            cast(val = ReadShared, ref = ReadShared, mut = ReadShared);
+        impl<T, U> Rc<T> => Rc<U>:
+            cast(val = ReadShared, ref = ReadShared, mut = ReadShared);
     }
 
     // SAFETY: std guarantees `Option<Box<T>>` a null niche. `Arc` and
@@ -146,7 +167,9 @@ mod alloc_impls {
 // holds no pointee.
 unsafe impl<P: NullNiche> Indirect for Option<P> {
     type Pointee = P::Pointee;
-    type Aliasing = P::Aliasing;
+    type CastState = P::CastState;
+    type CastStateRef = P::CastStateRef;
+    type CastStateMut = P::CastStateMut;
 }
 
 // SAFETY: both have the layouts of `P` and `Q`, which `Repointed` makes

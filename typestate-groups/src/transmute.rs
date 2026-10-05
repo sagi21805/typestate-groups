@@ -7,18 +7,59 @@ use crate::{
 /// Bit-reinterprets a container as the same container in another
 /// [`State`].
 ///
-/// ```ignore
-/// let big = unsafe { small.transmute_state::<Big>() }; // Wrap<Small> -> Wrap<Big>
-/// let big = small.cast_state::<Big>(); // safe when every field stays valid
+/// The `cast_state` methods are safe, and compile only when every field
+/// stays valid. The `transmute_state` methods skip that proof and are
+/// `unsafe`.
+///
+/// ```
+/// use typestate_groups::{
+///     Isomorphic, group, state, state_types, typestate,
+/// };
+///
+/// #[state_types]
+/// trait Meta {
+///     type Value;
+/// }
+///
+/// #[state]
+/// struct Unsigned;
+/// #[state]
+/// struct Signed;
+///
+/// #[group(UnsignedGroup)]
+/// impl Meta for (Unsigned,) {
+///     #[size(4)]
+///     type Value = u32;
+/// }
+///
+/// #[group(SignedGroup)]
+/// impl Meta for (Signed,) {
+///     #[size(4)]
+///     type Value = i32;
+/// }
+///
+/// #[typestate(unsafe_transmute = true)]
+/// struct Wrap<S: Meta> {
+///     value: S::Value,
+/// }
+///
+/// let mut unsigned = Wrap::<Unsigned> { value: u32::MAX };
+/// assert_eq!(unsigned.cast_state_ref::<Signed>().value, -1);
+///
+/// unsigned.cast_state_mut::<Signed>().value = -2;
+/// assert_eq!(unsigned.value, u32::MAX - 1);
+///
+/// let signed = unsigned.cast_state::<Signed>();
+/// assert_eq!(signed.value, -2);
 /// ```
 pub trait Isomorphic: WithState + Sized {
     /// Bit-reinterprets `self` in state `To`.
     ///
     /// # Safety
     ///
-    /// The bits of `self` must be a valid instance of the target. Prefer
-    /// [`cast_state`](Isomorphic::cast_state), which proves it, and
-    /// run `cargo miri test` on code that calls this.
+    /// The bits of `self` must be a valid target. Prefer
+    /// [`cast_state`](Isomorphic::cast_state), which proves it, and run
+    /// `cargo miri test` on code that calls this.
     unsafe fn transmute_state<To: State>(
         self,
     ) -> <Self as Restate<To>>::Target
@@ -41,7 +82,8 @@ pub trait Isomorphic: WithState + Sized {
     ///
     /// # Safety
     ///
-    /// The bits of `self` must be a valid instance of the target. Prefer
+    /// The bits of `self` must be a valid target, and no field that
+    /// changes type may hold an `UnsafeCell` in either state. Prefer
     /// [`cast_state_ref`](Isomorphic::cast_state_ref), which proves it,
     /// and run `cargo miri test` on code that calls this.
     unsafe fn transmute_state_ref<To: State>(
@@ -62,9 +104,10 @@ pub trait Isomorphic: WithState + Sized {
     ///
     /// # Safety
     ///
-    /// The bits of `self` must be a valid instance of the target. Prefer
-    /// [`cast_state_mut`](Isomorphic::cast_state_mut), which proves it,
-    /// and run `cargo miri test` on code that calls this.
+    /// The bits of `self` must be a valid target, and every value
+    /// written through the result must be valid back in `Self`'s state.
+    /// Prefer [`cast_state_mut`](Isomorphic::cast_state_mut), which
+    /// proves it, and run `cargo miri test` on code that calls this.
     unsafe fn transmute_state_mut<To: State>(
         &mut self,
     ) -> &mut <Self as Restate<To>>::Target
@@ -81,42 +124,8 @@ pub trait Isomorphic: WithState + Sized {
 
     /// Reinterprets `self` in state `To`.
     ///
-    /// Compiles only when every field that changes type, and every
-    /// pointee, holds bits valid in `To`, as [`CastableState`] proves.
-    ///
-    /// ```
-    /// use typestate_groups::{Isomorphic, group, state, state_types, typestate};
-    ///
-    /// #[state_types]
-    /// trait Meta {
-    ///     type Value;
-    /// }
-    ///
-    /// #[state]
-    /// struct Unsigned;
-    /// #[state]
-    /// struct Signed;
-    ///
-    /// #[group(UnsignedGroup)]
-    /// impl Meta for (Unsigned,) {
-    ///     #[size(4)]
-    ///     type Value = u32;
-    /// }
-    ///
-    /// #[group(SignedGroup)]
-    /// impl Meta for (Signed,) {
-    ///     #[size(4)]
-    ///     type Value = i32;
-    /// }
-    ///
-    /// #[typestate(unsafe_transmute = true)]
-    /// struct Wrap<S: Meta> {
-    ///     value: S::Value,
-    /// }
-    ///
-    /// let signed = Wrap::<Unsigned> { value: u32::MAX }.cast_state::<Signed>();
-    /// assert_eq!(signed.value, -1);
-    /// ```
+    /// Compiles only when every field and pointee that changes type
+    /// holds bits valid in `To`, as [`CastableState`] proves.
     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
     where
         Self: CastableState<To, ByValue>,
@@ -129,8 +138,9 @@ pub trait Isomorphic: WithState + Sized {
 
     /// Reinterprets `&self` in state `To`.
     ///
-    /// Compiles only when every field that changes type holds bits valid
-    /// in `To` and has no `UnsafeCell` in either state.
+    /// Compiles only when every field and pointee that changes type
+    /// holds bits valid in `To`, and no field that changes type holds an
+    /// `UnsafeCell` in either state, as [`CastableState`] proves.
     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
     where
         Self: CastableState<To, ByRef>,
@@ -144,9 +154,10 @@ pub trait Isomorphic: WithState + Sized {
 
     /// Reinterprets `&mut self` in state `To`.
     ///
-    /// Compiles only when every field that changes type holds bits valid
-    /// in `To`, and every value written through the result is valid back
-    /// in `Self`'s state.
+    /// Compiles only when every field and pointee that changes type
+    /// holds bits valid in `To`, and every value written through the
+    /// result is valid back in `Self`'s state, as [`CastableState`]
+    /// proves.
     fn cast_state_mut<To: State>(
         &mut self,
     ) -> &mut <Self as Restate<To>>::Target
