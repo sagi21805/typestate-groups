@@ -117,7 +117,9 @@ pub fn group_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// `typestate_groups::MorphFrom`.
 ///
 /// ```
-/// use typestate_groups::{MorphFrom, Morphic, group, state, state_types, typestate};
+/// use typestate_groups::{
+///     MorphFrom, Morphic, group, state, state_types, typestate,
+/// };
 ///
 /// #[state_types]
 /// trait Meta {
