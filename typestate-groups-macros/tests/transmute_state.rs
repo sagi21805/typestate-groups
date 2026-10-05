@@ -7,7 +7,7 @@ use core::{
     num::NonZeroU32,
     ptr::NonNull,
 };
-use typestate_groups::{Indirect, Isomorphic, Repointed, UnknownPointee};
+use typestate_groups::{Indirect, Isomorphic, ReadWriteShared, Repointed};
 use typestate_groups_macros::{group, state, state_types, typestate};
 
 #[state_types]
@@ -235,10 +235,12 @@ impl Payload for (Number,) {
 struct Handle<T>(NonNull<T>);
 
 // SAFETY: `Handle` holds `T` only behind its `NonNull`, which anyone may
-// alias.
+// read or write through.
 unsafe impl<T> Indirect for Handle<T> {
     type Pointee = T;
-    type Aliasing = UnknownPointee;
+    type CastState = ReadWriteShared;
+    type CastStateRef = ReadWriteShared;
+    type CastStateMut = ReadWriteShared;
 }
 
 // SAFETY: `Handle<U>` is a `NonNull<U>`, laid out like `NonNull<T>`.
