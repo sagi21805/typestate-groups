@@ -7,13 +7,13 @@ error[E0277]: the trait bound `bool: FromBytes` is not satisfied
     = note: Consider adding `#[derive(FromBytes)]` to `bool`
     = help: the following other types implement trait `FromBytes`:
               ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-              (A, B, C, D, E, F, G)
-              (A, B, C, D, E, F, G, H)
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
             and $N others
     = note: required for `typestate_groups::Read` to implement `Permits<u8, bool>`
 note: required for `Small<Raw>` to implement `CastableState<Flag, ByValue>`
@@ -42,13 +42,13 @@ error[E0277]: the trait bound `char: FromBytes` is not satisfied
     = note: Consider adding `#[derive(FromBytes)]` to `char`
     = help: the following other types implement trait `FromBytes`:
               ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-              (A, B, C, D, E, F, G)
-              (A, B, C, D, E, F, G, H)
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
             and $N others
     = note: required for `typestate_groups::Read` to implement `Permits<u32, char>`
 note: required for `Large<Bits>` to implement `CastableState<Letter, ByValue>`
@@ -77,13 +77,13 @@ error[E0277]: the trait bound `NonZero<u32>: FromBytes` is not satisfied
     = note: Consider adding `#[derive(FromBytes)]` to `NonZero<u32>`
     = help: the following other types implement trait `FromBytes`:
               ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-              (A, B, C, D, E, F, G)
-              (A, B, C, D, E, F, G, H)
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
             and $N others
     = note: required for `ReadShared` to implement `Permits<u32, NonZero<u32>>`
 note: required for `Large<Bits>` to implement `CastableState<Count, ByRef>`
@@ -152,13 +152,13 @@ error[E0277]: the trait bound `bool: FromBytes` is not satisfied
     = note: Consider adding `#[derive(FromBytes)]` to `bool`
     = help: the following other types implement trait `FromBytes`:
               ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-              (A, B, C, D, E, F, G)
-              (A, B, C, D, E, F, G, H)
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
             and $N others
     = note: required for `ReadWrite` to implement `Permits<bool, u8>`
 note: required for `Small<Flag>` to implement `CastableState<Raw, ByMut>`
@@ -257,13 +257,13 @@ error[E0277]: the trait bound `char: FromBytes` is not satisfied
     = note: Consider adding `#[derive(FromBytes)]` to `char`
     = help: the following other types implement trait `FromBytes`:
               ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-              (A, B, C, D, E, F, G)
-              (A, B, C, D, E, F, G, H)
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
             and $N others
     = note: required for `ReadWriteShared` to implement `Permits<u32, char>`
 note: required for `Pointer<Bits>` to implement `CastableState<Letter, ByValue>`
@@ -368,13 +368,13 @@ error[E0277]: the trait bound `bool: FromBytes` is not satisfied
     = note: Consider adding `#[derive(FromBytes)]` to `bool`
     = help: the following other types implement trait `FromBytes`:
               ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-              (A, B, C, D, E, F, G)
-              (A, B, C, D, E, F, G, H)
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
             and $N others
     = note: required for `ReadWrite` to implement `Permits<bool, u8>`
 note: required for `RefMut<'_, Flag>` to implement `CastableState<Raw, ByValue>`
