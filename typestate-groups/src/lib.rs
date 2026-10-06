@@ -1,18 +1,24 @@
 #![no_std]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 #[macro_use]
 mod macros;
 
 mod cast;
 mod error_helpers;
+mod indirect;
 mod layout;
 mod morph;
 mod transmute;
 
 pub use cast::{
-    Access, CastFrom, CastRefFrom, CastableState, Exclusive, Owned, Shared,
+    Access, ByMut, ByRef, ByValue, CastBy, CastableState, Permits, Read,
+    ReadShared, ReadWrite, ReadWriteShared,
 };
 pub use error_helpers::PinnedLayout;
+pub use indirect::{Indirect, NullNiche, Repointed};
 pub use layout::{
     PinnedTypeAlignment, PinnedTypeLayout, PinnedTypeSize, SameAlignment,
     SameLayout, SameSize, TypeAlignment, TypeLayout, TypeSize,
@@ -33,8 +39,6 @@ pub trait WithState {
 
 /// `Self` with its state replaced by `To` and every other generic
 /// unchanged.
-///
-/// `#[typestate]` implements it for every target state.
 pub trait Restate<To: State>: WithState {
     /// `Self` in state `To`.
     type Target: WithState<State = To>;
@@ -42,3 +46,8 @@ pub trait Restate<To: State>: WithState {
 
 /// A type that captures a specific implementation of a [`group_trait`].
 pub trait Group {}
+
+/// The README's examples, compiled as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../../README.md")]
+struct ReadmeDoctests;

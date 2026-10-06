@@ -1,7 +1,10 @@
 //! `cast_state` and its ref/mut forms between states whose fields stay
 //! valid. Runs under `cargo +nightly miri test` too.
 
-use core::{cell::Cell, marker::PhantomData, num::NonZeroU32};
+use core::{
+    cell::Cell, marker::PhantomData, num::NonZeroU32, ptr::NonNull,
+};
+use std::{rc::Rc, sync::Arc};
 use typestate_groups::Isomorphic;
 use typestate_groups_macros::{group, state, state_types, typestate};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -153,6 +156,56 @@ fn cast_state_mut_writes_are_seen_after_the_borrow_ends() {
     let signed = unsigned.cast_state_mut::<Signed>();
     signed.cast_state_mut::<Pixel>().value.r = 8;
     assert_eq!(unsigned.value.to_ne_bytes()[0], 8);
+}
+
+/// Every pointer kind, whose pointees cast like fields held by value.
+#[typestate(unsafe_transmute = true)]
+struct Pointers<'a, S: Meta> {
+    raw: *mut S::Value,
+    nullable: Option<NonNull<S::Value>>,
+    shared: &'a S::Value,
+    unique: &'a mut S::Value,
+    boxed: Box<S::Value>,
+    atomic: Arc<S::Value>,
+    counted: Option<Rc<S::Value>>,
+}
+
+#[test]
+fn cast_state_reinterprets_every_pointee() {
+    let mut target = u32::MAX;
+    let ptr = &raw mut target;
+    let shared = 1;
+    let mut unique = 2;
+    let unsigned = Pointers::<Unsigned> {
+        raw: ptr,
+        nullable: NonNull::new(ptr),
+        shared: &shared,
+        unique: &mut unique,
+        boxed: Box::new(3),
+        atomic: Arc::new(u32::MAX),
+        counted: Some(Rc::new(5)),
+    };
+    let atomic = Arc::clone(&unsigned.atomic);
+
+    let view = unsigned.cast_state_ref::<Signed>();
+    assert_eq!((*view.shared, *view.boxed), (1, 3));
+    assert_eq!(view.counted.as_deref(), Some(&5));
+
+    let mut signed = unsigned.cast_state::<Signed>();
+    *signed.unique = -1;
+    *signed.cast_state_mut::<Unsigned>().boxed = 4;
+    assert_eq!(*signed.boxed, 4);
+    // SAFETY: `ptr` points at `target`, which outlives `signed`.
+    unsafe {
+        assert_eq!(*signed.raw, -1);
+        assert_eq!(signed.nullable.map(|p| *p.as_ptr()), Some(-1));
+    }
+
+    assert_eq!(*signed.atomic, -1);
+
+    drop(signed);
+    assert_eq!(unique, u32::MAX);
+    assert_eq!(Arc::strong_count(&atomic), 1);
 }
 
 #[state_types]

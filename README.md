@@ -7,17 +7,14 @@
 
 Typestate-based grouping types for Rust.
 
-Group the states of a typestate by the types they carry, then implement
-a trait once per group. Every state in the group gets that impl, and the
-impl sees the group's concrete types.
-
-## Grouping states
-
-A sensor frame holds raw ADC counts (`u16`) in two states and volts
-(`f32`) in a third. `Report` gets one impl per group:
+A typestate container changes its field types with its state. This crate
+groups states by the types they carry, so you write one trait impl per
+group, and moves a container between states by value or in place.
 
 ```rust
-use typestate_groups::{group, group_impl, group_trait, state, state_types, typestate};
+use typestate_groups::{
+    group, group_impl, group_trait, state, state_types, typestate,
+};
 
 #[state_types]
 trait Stage {
@@ -31,9 +28,10 @@ struct Filtered;
 #[state]
 struct Calibrated;
 
+// Raw ADC counts before calibration, volts after.
 #[group(Counts)]
 impl Stage for (Sampled, Filtered) {
-    type Sample = u16;
+    type Sample = u32;
 }
 
 #[group(Volts)]
@@ -44,7 +42,7 @@ impl Stage for (Calibrated,) {
 #[typestate]
 struct Frame<S: Stage> {
     sensor: u32,
-    range: [S::Sample; 2],
+    sample: S::Sample,
 }
 
 #[group_trait(by = Stage)]
@@ -55,164 +53,132 @@ trait Report {
 #[group_impl(Counts)]
 impl<S: Stage> Report for Frame<S> {
     fn report(&self) -> String {
-        let [lo, hi] = self.range;
-        format!("sensor {}: {lo}..={hi} counts", self.sensor)
+        format!("sensor {}: {} counts", self.sensor, self.sample)
     }
 }
 
 #[group_impl(Volts)]
 impl<S: Stage> Report for Frame<S> {
     fn report(&self) -> String {
-        let [lo, hi] = self.range;
-        format!("sensor {}: {lo:.2}..={hi:.2} V", self.sensor)
+        format!("sensor {}: {:.2} V", self.sensor, self.sample)
     }
 }
 
 fn main() {
-    let raw = Frame::<Sampled> {
-        sensor: 7,
-        range: [0, 4095],
-    };
-    assert_eq!(raw.report(), "sensor 7: 0..=4095 counts");
+    let filtered = Frame::<Filtered> { sensor: 7, sample: 12 };
+    assert_eq!(filtered.report(), "sensor 7: 12 counts");
 
-    let filtered = Frame::<Filtered> {
-        sensor: 7,
-        range: [12, 4000],
-    };
-    assert_eq!(filtered.report(), "sensor 7: 12..=4000 counts");
-
-    let calibrated = Frame::<Calibrated> {
-        sensor: 7,
-        range: [0.0, 3.3],
-    };
-    assert_eq!(calibrated.report(), "sensor 7: 0.00..=3.30 V");
+    let calibrated = Frame::<Calibrated> { sensor: 7, sample: 3.3 };
+    assert_eq!(calibrated.report(), "sensor 7: 3.30 V");
 }
 ```
+
+## Guide
+
+Each step below adds to the example above.
+
+### 1. States and groups
+
+- `#[state_types]` lists the types that change with the state.
+- `#[state]` declares a state.
+- `#[group(Name)]` puts a tuple of states in a group and sets their types.
+- `#[typestate]` marks the container.
+
+`Frame<Sampled>` holds a `u32` and `Frame<Calibrated>` holds an `f32`.
+
+### 2. One impl per group
+
+`#[group_trait(by = Stage)]` declares a trait that you implement once per
+group with `#[group_impl(Group)]`. Every state in the group gets the
+impl, so adding a state to `(Sampled, Filtered)` gives it `report()` with
+no new code.
 
 Plain Rust rejects this pair with `E0119: conflicting implementations`,
 because coherence ignores associated types:
 
 ```rust,ignore
-impl<S: Stage<Sample = u16>> Report for Frame<S> { .. }
+impl<S: Stage<Sample = u32>> Report for Frame<S> { .. }
 impl<S: Stage<Sample = f32>> Report for Frame<S> { .. }
 ```
 
-With `typestate-groups`, `{lo}` is a `u16` in one impl and `{lo:.2}` formats an
-`f32` in the other. Add a state to a group's tuple and it has `report()`
-with no new code.
+### 3. Changing state by value
 
-## Changing state
+Implement `MorphFrom` to say how one state becomes another, then call
+`morph::<Target>()`. For a conversion that can fail, implement
+`TryMorphFrom` and call `try_morph::<Target>()`:
 
-A `#[state_types]` trait can declare several associated types. A packet header below
-carries an address and a port, and moves through three states:
+```rust,ignore
+use typestate_groups::{MorphFrom, Morphic, TryMorphFrom};
 
-- `Received` holds the raw bytes.
-- `Routed` holds native integers of the same sizes.
-- `Logged` holds an `Ipv4Addr` and a host-order port.
+// A saturated reading can't be filtered.
+impl TryMorphFrom<Frame<Sampled>> for Frame<Filtered> {
+    type Error = u32;
 
-`Received` to `Routed` reinterprets the bits of both fields in place with
-`cast_state`.
-`Routed` to `Logged` builds new values, so it goes through `MorphFrom`.
-
-```rust
-use core::net::Ipv4Addr;
-
-use typestate_groups::{
-    Isomorphic, MorphFrom, Morphic, group, state, state_types, typestate,
-};
-
-#[state_types]
-trait Wire {
-    type Addr;
-    type Port;
-}
-
-#[state]
-struct Received;
-#[state]
-struct Routed;
-#[state]
-struct Logged;
-
-#[group(Bytes)]
-impl Wire for (Received,) {
-    #[size(4)]
-    type Addr = [u8; 4];
-    #[size(2)]
-    type Port = [u8; 2];
-}
-
-#[group(Native)]
-impl Wire for (Routed,) {
-    #[size(4)]
-    type Addr = u32;
-    #[size(2)]
-    type Port = u16;
-}
-
-#[group(Typed)]
-impl Wire for (Logged,) {
-    type Addr = Ipv4Addr;
-    type Port = u16;
-}
-
-#[typestate(unsafe_transmute = true, align = 4)]
-struct Header<S: Wire> {
-    dst: S::Addr,
-    port: S::Port,
-    ttl: u8,
-}
-
-impl MorphFrom<Header<Routed>> for Header<Logged> {
-    fn morph_from(header: Header<Routed>) -> Self {
-        Header {
-            dst: Ipv4Addr::from(header.dst.to_ne_bytes()),
-            port: u16::from_be(header.port),
-            ttl: header.ttl,
+    fn try_morph_from(src: Frame<Sampled>) -> Result<Self, u32> {
+        match src.sample {
+            4095 => Err(src.sample),
+            sample => Ok(Frame { sensor: src.sensor, sample }),
         }
     }
 }
 
-fn main() {
-    let header = Header::<Received> {
-        dst: [10, 0, 0, 2],
-        port: [0x1f, 0x90],
-        ttl: 64,
-    };
-
-    let header = header.cast_state::<Routed>();
-    assert_eq!(header.dst, u32::from_ne_bytes([10, 0, 0, 2]));
-
-    let header = header.morph::<Logged>();
-    assert_eq!(header.dst, Ipv4Addr::new(10, 0, 0, 2));
-    assert_eq!((header.port, header.ttl), (8080, 64));
+impl MorphFrom<Frame<Filtered>> for Frame<Calibrated> {
+    fn morph_from(src: Frame<Filtered>) -> Self {
+        Frame {
+            sensor: src.sensor,
+            sample: src.sample as f32 * 3.3 / 4095.0,
+        }
+    }
 }
+
+let frame = Frame::<Sampled> { sensor: 7, sample: 2047 };
+let volts = frame.try_morph::<Filtered>()?.morph::<Calibrated>();
 ```
 
-`#[size(N)]` pins a type's size, and `unsafe_transmute = true` generates
-`cast_state` and `transmute_state` for every pair of states whose fields
-line up. Both checks run at compile time. Change `Routed`'s address to `u64` and the
-build fails with:
+One impl can cover many pairs, such as `impl<S: Stage, S2: Stage>
+MorphFrom<Frame<S>> for Frame<S2> where S2::Sample: From<S::Sample>`.
 
-```text
-error[E0080]: evaluation panicked: change `#[size(4)]` on `Addr` to the size of `u64`
-  --> src/main.rs:28:1
-   |
-28 | #[group(Native)]
-   | ^^^^^^^^^^^^^^^^ evaluation of `_` failed here
+### 4. Reinterpreting in place
+
+When two states hold types of the same size, you can reinterpret the
+container's bits instead of converting each field. Add a `Centered` state
+whose signed counts share the bits of `Filtered`'s:
+
+```rust,ignore
+use typestate_groups::Isomorphic;
+
+#[state]
+struct Centered;
+
+#[group(SignedCounts)]
+impl Stage for (Centered,) {
+    #[size(4)]
+    type Sample = i32;
+}
+
+// Also add `#[size(4)]` to `Sample` in `Counts` and `Volts`.
+
+#[typestate(unsafe_transmute = true)]
+struct Frame<S: Stage> {
+    sensor: u32,
+    sample: S::Sample,
+}
+
+let frame = Frame::<Filtered> { sensor: 7, sample: u32::MAX };
+assert_eq!(frame.cast_state::<Centered>().sample, -1);
 ```
 
-Transmuting straight to `Logged` fails too, with `add #[size(N)] to the
-associated type set to Ipv4Addr in #[group(Typed)] to transmute it`.
-Drop `align = 4` and the error asks for it back, since `[u8; 4]` and
-`u32` disagree on alignment.
+`unsafe_transmute = true` adds `#[repr(C)]`. When the states' types
+disagree on alignment, such as `[u8; 4]` and `u32`, add `align = 4`.
 
-`cast_state` also checks that every field which changes type holds bits
-valid in the new state, using [`zerocopy`](https://docs.rs/zerocopy): the
-old type must be `IntoBytes` (no padding) and the new one `FromBytes`
-(every bit pattern valid). Casting a `u8` into a `bool` fails with
+The size and layout checks run at compile time. Give `Centered` an `i64`
+and the build fails asking you to fix `#[size(4)]`.
+
+`cast_state` also checks with [`zerocopy`](https://docs.rs/zerocopy) that
+every field that changes type holds bits valid in the new state. The old
+type must be `IntoBytes` (no padding) and the new one `FromBytes` (every
+bit pattern valid). Casting a `u8` into a `bool` fails with
 ``convert with `morph`: `u8` may hold bits that are not a valid `bool` ``.
-Derive those traits on your own field types to cast them.
 
 | Method | Each changed field also needs |
 |---|---|
@@ -220,26 +186,124 @@ Derive those traits on your own field types to cast them.
 | `cast_state_mut` | the same check from the new type back to the old |
 | `cast_state_ref` | `zerocopy::Immutable` on both types, so no `Cell` |
 
-When a field type is valid only for some values, such as `u32` into
-`char`, use `unsafe { transmute_state() }` and run `cargo miri test` on
+When a type is valid only for some bit patterns, such as `u32` into
+`char`, call `unsafe { transmute_state() }` and run `cargo miri test` on
 the code that calls it.
 
-`morph::<Target>()` calls your `MorphFrom` impl. One impl can be generic
-over both states, and a container can morph its fields with their own
-impls. For a conversion that can fail, implement `TryMorphFrom` and call
-`try_morph::<Target>()`.
+### 5. Pointer fields
 
-## Crates
+A reinterpreted container can hold the state's types behind a pointer.
+The pointee needs no `#[size(N)]`, because a pointer to a sized type has
+the same layout whatever it points at:
 
-- [`typestate-groups`](typestate-groups) — the public API.
-- [`typestate-groups-macros`](typestate-groups-macros) — procedural macros powering `typestate-groups`.
+```rust,ignore
+#[typestate(unsafe_transmute = true)]
+struct Window<'a, S: Stage> {
+    latest: Box<S::Sample>,
+    previous: Option<&'a S::Sample>,
+}
+
+let previous = u32::MAX;
+let window = Window::<Filtered> {
+    latest: Box::new(u32::MAX),
+    previous: Some(&previous),
+};
+let centered = window.cast_state::<Centered>();
+assert_eq!(centered.previous, Some(&-1));
+```
+
+The field's type must implement `Indirect`. The crate implements it for
+`*const T`, `*mut T`, `NonNull<T>`, `&T` and `&mut T`, for `Box<T>`,
+`Arc<T>` and `Rc<T>` with the default `alloc` feature, and for `Option<P>`
+when `P` is one of the non-null pointers.
+
+A pointee must keep its size and alignment. Others may see it through
+the pointer, so each pointer names the access its pointee gets under
+each cast method, and `Permits` checks that access with zerocopy's
+traits:
+
+| Access | Needs of `Src` and `Dst` |
+|---|---|
+| `Read` | `Src: IntoBytes`, `Dst: FromBytes` |
+| `ReadShared` | `Read`, and both `Immutable` |
+| `ReadWrite` | both `IntoBytes + FromBytes` |
+| `ReadWriteShared` | `ReadWrite`, and both `Immutable` |
+
+| Pointer | `cast_state` | `cast_state_ref` | `cast_state_mut` |
+|---|---|---|---|
+| `Box<T>`, or by value | `Read` | `ReadShared` | `ReadWrite` |
+| `&T`, `Arc<T>`, `Rc<T>` | `ReadShared` | `ReadShared` | `ReadShared` |
+| `&mut T` | `ReadWrite` | `ReadShared` | `ReadWrite` |
+| `*const T`, `*mut T`, `NonNull<T>` | `ReadWriteShared` | `ReadWriteShared` | `ReadWriteShared` |
+
+`Vec` and `Result` don't implement `Indirect`. `Result<T, E>` stores `T`
+inline and packs its tag into `T`'s invalid bit patterns, so
+`Result<char, ()>` is 4 bytes while `Result<u32, ()>` is 8. Rust doesn't
+promise `Vec<T>` the same field order for every `T`.
+
+### 6. Your own types
+
+Derive zerocopy's traits to let your own types cast:
+
+```rust
+use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+#[derive(FromBytes, IntoBytes, Immutable)]
+#[repr(C)]
+struct Rgba {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+```
+
+Implement `Indirect` and `Repointed` to use your own pointer as a field:
+
+```rust
+use core::ptr::NonNull;
+use typestate_groups::{Indirect, ReadWriteShared, Repointed};
+
+#[repr(transparent)]
+struct Handle<T>(NonNull<T>);
+
+// SAFETY: `Handle` holds `T` only behind its `NonNull`, which anyone may
+// read or write through.
+unsafe impl<T> Indirect for Handle<T> {
+    type Pointee = T;
+    type CastState = ReadWriteShared;
+    type CastStateRef = ReadWriteShared;
+    type CastStateMut = ReadWriteShared;
+}
+
+// SAFETY: `Handle<U>` is a `NonNull<U>`, laid out like `NonNull<T>`.
+unsafe impl<T, U> Repointed<Handle<T>> for Handle<U> {}
+```
+
+Both traits are `unsafe` because the casts trust them. `Indirect`
+promises the type holds no `Pointee` inline and that each access covers
+everyone who may see the pointee. Copy the table row of the pointer yours
+behaves like, or pick `ReadWriteShared` for all three. `Repointed<Src>`
+promises `Self` is `Src` pointing at another type, with the same layout.
+Implement `NullNiche` too if your pointer is never null, to allow
+`Option<Handle<T>>`.
+
+Don't implement `WithState`, `Restate`, `TransmutableState` or
+`CastableState` by hand. `#[typestate]` implements them, and their safety
+depends on the layout checks it generates.
 
 ## Installation
 
 ```toml
 [dependencies]
-typestate-groups = "0.2"
+typestate-groups = "0.x"
 ```
+
+The crate is `no_std`. Its default `alloc` feature adds the `Box`, `Arc`
+and `Rc` impls. Turn it off with `default-features = false`.
+
+The procedural macros live in
+[`typestate-groups-macros`](typestate-groups-macros).
 
 ## License
 

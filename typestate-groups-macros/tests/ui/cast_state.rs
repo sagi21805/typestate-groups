@@ -3,8 +3,9 @@
 // can't transmute at all.
 #![allow(dead_code)]
 
-use core::{cell::Cell, num::NonZeroU32};
-use typestate_groups::Isomorphic;
+use core::{cell::Cell, num::NonZeroU32, ptr::NonNull};
+use std::sync::Arc;
+use typestate_groups::{CastableState, Isomorphic, ByValue};
 use typestate_groups_macros::{group, state, state_types, typestate};
 
 #[state_types]
@@ -62,6 +63,8 @@ struct Count;
 struct Shared;
 #[state]
 struct Gapped;
+#[state]
+struct Quad;
 
 /// One padding byte after `small`.
 #[derive(zerocopy::FromBytes)]
@@ -101,9 +104,35 @@ impl Word for (Gapped,) {
     type Value = Padded;
 }
 
+#[group(QuadGroup)]
+impl Word for (Quad,) {
+    #[size(4)]
+    type Value = [u8; 4];
+}
+
 #[typestate(unsafe_transmute = true, align = 4)]
 struct Large<S: Word> {
     value: S::Value,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Pointer<S: Word> {
+    value: NonNull<S::Value>,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Ref<'a, S: Word> {
+    value: &'a S::Value,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Counted<S: Word> {
+    value: Arc<S::Value>,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct RefMut<'a, S: Byte> {
+    value: &'a mut S::Value,
 }
 
 fn transmute_state_u8_two_into_bool(raw: Small<Raw>) {
@@ -133,6 +162,28 @@ fn transmute_state_ref_writes_through_a_shared_integer(bits: &Large<Bits>) {
 fn shared_cell_into_integer(shared: &Large<Shared>) {
     let _ = shared.cast_state_ref::<Bits>();
 }
+
+fn transmute_state_non_null_surrogate_into_char(bits: Pointer<Bits>) {
+    let _ = bits.cast_state::<Letter>();
+}
+
+fn transmute_state_shared_pointee_into_cell(bits: Ref<Bits>) {
+    let _ = bits.cast_state::<Shared>();
+}
+
+fn arc_pointee_into_cell(bits: Counted<Bits>) {
+    let _ = bits.cast_state::<Shared>();
+}
+
+fn transmute_state_borrowed_bool_gets_an_invalid_byte_back(flag: RefMut<Flag>) {
+    let _ = flag.cast_state::<Raw>();
+}
+
+// `transmute_state_reads_a_misaligned_pointee`: a `[u8; 4]` pointee may
+// sit where a `u32` can't. `cast_state` evaluates `POINTEE_CHECK` only
+// under `cargo build`, and trybuild runs `cargo check`, so a const item
+// forces it here.
+const _: () = <Pointer<Quad> as CastableState<Bits, ByValue>>::POINTEE_CHECK;
 
 fn size_mismatch(raw: Small<Raw>) {
     let _ = raw.cast_state::<Pair>();

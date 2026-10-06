@@ -10,7 +10,7 @@
 //!     --ignored --exact <name>
 //! ```
 
-use core::{cell::Cell, num::NonZeroU32};
+use core::{cell::Cell, num::NonZeroU32, ptr::NonNull};
 use typestate_groups::Isomorphic;
 use typestate_groups_macros::{group, state, state_types, typestate};
 
@@ -56,6 +56,8 @@ struct Count;
 struct Shared;
 #[state]
 struct Gapped;
+#[state]
+struct Quad;
 
 /// One padding byte after `small`.
 #[repr(C)]
@@ -94,10 +96,35 @@ impl Word for (Gapped,) {
     type Value = Padded;
 }
 
+#[group(QuadGroup)]
+impl Word for (Quad,) {
+    #[size(4)]
+    type Value = [u8; 4];
+}
+
 #[typestate(unsafe_transmute = true, align = 4)]
 struct Large<S: Word> {
     value: S::Value,
 }
+
+#[typestate(unsafe_transmute = true)]
+struct Pointer<S: Word> {
+    value: NonNull<S::Value>,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Ref<'a, S: Word> {
+    value: &'a S::Value,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct RefMut<'a, S: Byte> {
+    value: &'a mut S::Value,
+}
+
+/// Bytes at an address that is 4-aligned, so one past it is not.
+#[repr(align(4))]
+struct Aligned([u8; 8]);
 
 #[test]
 #[ignore = "undefined behaviour: run alone under Miri"]
@@ -148,4 +175,48 @@ fn transmute_state_ref_writes_through_a_shared_integer() {
     let shared: &Large<Shared> = unsafe { bits.transmute_state_ref() };
     shared.value.set(2);
     assert_eq!(bits.value, 2);
+}
+
+#[test]
+#[ignore = "undefined behaviour: run alone under Miri"]
+fn transmute_state_non_null_surrogate_into_char() {
+    let surrogate = 0xd800u32;
+    let bits = Pointer::<Bits> {
+        value: NonNull::from(&surrogate),
+    };
+    let letter: Pointer<Letter> = unsafe { bits.transmute_state() };
+    assert_eq!(unsafe { *letter.value.as_ptr() }.len_utf8(), 3);
+}
+
+#[test]
+#[ignore = "undefined behaviour: run alone under Miri"]
+fn transmute_state_shared_pointee_into_cell() {
+    let value = 1u32;
+    let bits = Ref::<Bits> { value: &value };
+    let shared: Ref<Shared> = unsafe { bits.transmute_state() };
+    shared.value.set(2);
+    assert_eq!(value, 2);
+}
+
+#[test]
+#[ignore = "undefined behaviour: run alone under Miri"]
+fn transmute_state_borrowed_bool_gets_an_invalid_byte_back() {
+    let mut value = false;
+    let raw: RefMut<Raw> =
+        unsafe { RefMut::<Flag> { value: &mut value }.transmute_state() };
+    *raw.value = 2;
+    assert!(value);
+}
+
+#[test]
+#[ignore = "undefined behaviour: run alone under Miri"]
+fn transmute_state_reads_a_misaligned_pointee() {
+    let bytes = Aligned([1; 8]);
+    let quad = Pointer::<Quad> {
+        value: unsafe {
+            NonNull::from(&bytes.0).cast::<[u8; 4]>().byte_add(1)
+        },
+    };
+    let bits: Pointer<Bits> = unsafe { quad.transmute_state() };
+    assert_eq!(unsafe { *bits.value.as_ptr() }, 0x0101_0101);
 }

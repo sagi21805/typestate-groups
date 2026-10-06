@@ -10,6 +10,14 @@ keywords = ["typestate", "state-machine", "grouping", "type"]
 categories = ["rust-patterns", "data-structures"]
 readme = "../README.md"
 
+[features]
+default = ["alloc"]
+## `Indirect` for `Box`, `Arc` and `Rc`.
+alloc = []
+
 [dependencies]
 typestate-groups-macros = { path = "../typestate-groups-macros", version = "0.1.4" }
 zerocopy = "0.8.59"
+
+[dev-dependencies]
+zerocopy = { version = "0.8.59", features = ["derive"] }

@@ -42,3 +42,27 @@ macro_rules! layout_property {
         }
     };
 }
+
+/// Implements `Indirect` for each pointer, with the access its pointee
+/// gets under `cast_state` (`val`), `cast_state_ref` (`ref`) and
+/// `cast_state_mut` (`mut`), and `Repointed` between the pointer to `T`
+/// and the pointer to `U`.
+macro_rules! indirect {
+    ($(
+        impl<$($lt:lifetime,)? $t:ident, $u:ident> $src:ty => $dst:ty:
+            cast(
+                val = $by_value:ident,
+                ref = $by_ref:ident,
+                mut = $by_mut:ident $(,)?
+            );
+    )*) => {$(
+        unsafe impl<$($lt,)? $t> $crate::Indirect for $src {
+            type Pointee = $t;
+            type CastState = $crate::$by_value;
+            type CastStateRef = $crate::$by_ref;
+            type CastStateMut = $crate::$by_mut;
+        }
+
+        unsafe impl<$($lt,)? $t, $u> $crate::Repointed<$src> for $dst {}
+    )*};
+}
