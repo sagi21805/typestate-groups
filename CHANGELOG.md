@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.2.2...typestate-groups-v0.3.0) - 2026-10-06
+
+### Fixed
+
+- fix error message
+
+### Other
+
+- made test compile fail as intended
+- update README
+- Made code readable, and more simplified.
+- started simlifying trait system
+- replace pointer syntax matching with the Indirect trait and rewrite the readme as a guide
+- allow pointer fields in transmutable typestates and check their pointees in casts
+- pinned rust version to make errors the same on CI
+- formatting
+- matched new names
+- chagnes to tests because of code changes
+- optimized some search routines so they can early stop
+- refactored typestate, mainly splitting into files
+- replace let chain in outlives visitor to keep the 1.85 msrv
+
 ## [0.2.2](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.2.1...typestate-groups-v0.2.2) - 2026-10-01
 
 ### Other
