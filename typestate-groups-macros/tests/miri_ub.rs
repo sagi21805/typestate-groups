@@ -122,6 +122,13 @@ struct RefMut<'a, S: Byte> {
     value: &'a mut S::Value,
 }
 
+/// A node of an intrusive list.
+#[typestate(unsafe_transmute = true)]
+struct Linked<S: Byte> {
+    value: S::Value,
+    next: Option<NonNull<Linked<S>>>,
+}
+
 /// Bytes at an address that is 4-aligned, so one past it is not.
 #[repr(align(4))]
 struct Aligned([u8; 8]);
@@ -219,4 +226,20 @@ fn transmute_state_reads_a_misaligned_pointee() {
     };
     let bits: Pointer<Bits> = unsafe { quad.transmute_state() };
     assert_eq!(unsafe { *bits.value.as_ptr() }, 0x0101_0101);
+}
+
+#[test]
+#[ignore = "undefined behaviour: run alone under Miri"]
+fn transmute_state_self_pointer_writes_an_invalid_bool() {
+    let mut flag = Linked::<Flag> {
+        value: false,
+        next: None,
+    };
+    let head = Linked::<Flag> {
+        value: true,
+        next: Some(NonNull::from(&mut flag)),
+    };
+    let raw: Linked<Raw> = unsafe { head.transmute_state() };
+    unsafe { (*raw.next.unwrap().as_ptr()).value = 2 };
+    assert!(flag.value);
 }

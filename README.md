@@ -240,6 +240,27 @@ traits:
 | `&mut T` | `ReadWrite` | `ReadShared` | `ReadWrite` |
 | `*const T`, `*mut T`, `NonNull<T>` | `ReadWriteShared` | `ReadWriteShared` | `ReadWriteShared` |
 
+A pointer can also reach another `unsafe_transmute = true` container,
+which `Permits` accepts whenever that container casts by the matching
+method: `cast_state` for `Read`, `cast_state_ref` for `ReadShared`,
+`cast_state_mut` for `ReadWrite`, and both of the last two for
+`ReadWriteShared`. A container can point at itself, as in an intrusive
+list:
+
+```rust,ignore
+#[typestate(unsafe_transmute = true)]
+struct Node<S: Stage> {
+    sample: S::Sample,
+    next: Option<NonNull<Node<S>>>,
+}
+```
+
+Every node the list reaches is cast too, so each projection must also
+hold under the pointer's access, here `ReadWriteShared`. A container
+that points at itself holds the state's types only by value. Two
+containers that point at each other make rustc report E0275; convert
+them with `morph`.
+
 `Vec` and `Result` don't implement `Indirect`. `Result<T, E>` stores `T`
 inline and packs its tag into `T`'s invalid bit patterns, so
 `Result<char, ()>` is 4 bytes while `Result<u32, ()>` is 8. Rust doesn't

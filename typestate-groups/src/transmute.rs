@@ -11,6 +11,12 @@ use crate::{
 /// stays valid. The `transmute_state` methods skip that proof and are
 /// `unsafe`.
 ///
+/// A field may point at another container, or at its own struct as in an
+/// intrusive list. Every node such a pointer reaches is cast with the
+/// container, so its projections must stay valid under the pointer's
+/// access too. Containers that point at each other make rustc report
+/// E0275; convert those with [`morph`](crate::Morphic::morph).
+///
 /// ```
 /// use typestate_groups::{
 ///     Isomorphic, group, state, state_types, typestate,

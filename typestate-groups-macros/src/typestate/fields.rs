@@ -16,22 +16,28 @@ pub(super) enum FieldShape {
     Fixed,
     /// `S::Assoc`, laid out by its group's `#[size(N)]`.
     Projection(Ident),
+    /// A pointer to the struct itself, such as
+    /// `Option<NonNull<Node<S>>>`.
+    SelfPointer(Box<Type>),
     /// Any other type, which must implement `typestate_groups::Indirect`.
     Indirect(Box<Type>),
 }
 
 #[ext]
 pub(super) impl Field {
-    /// How this field changes between states.
+    /// How this field of `container` changes between states.
     ///
     /// `S::Value -> Projection(Value)`,
+    /// `Option<NonNull<Node<S>>> -> SelfPointer(..)`,
     /// `Option<NonNull<S::Value>> -> Indirect(..)`
-    fn shape(&self, state: &Ident) -> FieldShape {
+    fn shape(&self, state: &Ident, container: &Ident) -> FieldShape {
         let ty = &self.ty;
         if !ty.mentions_ident(state) || ty.is_zst() {
             FieldShape::Fixed
         } else if let Some(assoc) = ty.state_projection(state) {
             FieldShape::Projection(assoc.clone())
+        } else if ty.mentions_ident(container) {
+            FieldShape::SelfPointer(Box::new(ty.clone()))
         } else {
             FieldShape::Indirect(Box::new(ty.clone()))
         }

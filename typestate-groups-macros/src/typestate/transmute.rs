@@ -55,18 +55,22 @@ impl TypeState {
 
     /// The associated types the fields hold by value (`Value` in a field
     /// of type `S::Value`).
-    fn projections(&self) -> impl Iterator<Item = &Ident> {
+    pub(super) fn projections(&self) -> impl Iterator<Item = &Ident> {
         self.shapes.iter().filter_map(|shape| match shape {
             FieldShape::Projection(assoc) => Some(assoc),
-            FieldShape::Fixed | FieldShape::Indirect(_) => None,
+            FieldShape::Fixed
+            | FieldShape::SelfPointer(_)
+            | FieldShape::Indirect(_) => None,
         })
     }
 
-    /// The types of the fields that hold the state's types behind a
-    /// pointer.
+    /// The types of the fields that hold the state's types, or the
+    /// struct itself, behind a pointer.
     fn indirect_fields(&self) -> impl Iterator<Item = &Type> {
         self.shapes.iter().filter_map(|shape| match shape {
-            FieldShape::Indirect(ty) => Some(&**ty),
+            FieldShape::SelfPointer(ty) | FieldShape::Indirect(ty) => {
+                Some(&**ty)
+            }
             FieldShape::Fixed | FieldShape::Projection(_) => None,
         })
     }

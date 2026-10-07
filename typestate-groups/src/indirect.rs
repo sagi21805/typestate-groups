@@ -73,6 +73,24 @@ pub unsafe trait Indirect {
     type CastStateMut: Access;
 }
 
+/// `Self` is `T`. A `#[typestate]` field that names its own struct
+/// requires it of its [`Pointee`](Indirect::Pointee), so the cast checks
+/// the struct once instead of recursing into it.
+///
+/// # Safety
+///
+/// `Self` must be `T`.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "point this field at exactly `{T}`, not `{Self}`: a field \
+               that names its own struct must point at it",
+    note = "or convert with `morph`"
+)]
+pub unsafe trait SameType<T> {}
+
+// SAFETY: `T` is `T`.
+unsafe impl<T> SameType<T> for T {}
+
 /// `Self` is `Src` pointing at another type.
 ///
 /// # Safety

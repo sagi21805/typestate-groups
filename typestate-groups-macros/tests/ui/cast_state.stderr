@@ -462,11 +462,11 @@ help: the trait `CastableState<Flag, ByValue>` is not implemented for `Opaque<Ra
               `Counted<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
               `Counted<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
               `Counted<S>` implements `CastableState<__TypestateGroupsTargetState, ByValue>`
-              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
-              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
-              `Large<S>` implements `CastableState<__TypestateGroupsTargetState, ByValue>`
-              `Pointer<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
-              `Pointer<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
+              `First<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
+              `First<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
+              `First<S>` implements `CastableState<__TypestateGroupsTargetState, ByValue>`
+              `Holder<S>` implements `CastableState<__TypestateGroupsTargetState, ByMut>`
+              `Holder<S>` implements `CastableState<__TypestateGroupsTargetState, ByRef>`
             and $N others
 note: required by a bound in `cast_state`
    --> $WORKSPACE/typestate-groups/src/transmute.rs
@@ -476,3 +476,145 @@ note: required by a bound in `cast_state`
     |     where
     |         Self: CastableState<To, ByValue>,
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+
+error[E0277]: the trait bound `bool: FromBytes` is not satisfied
+   --> tests/ui/cast_state.rs:215:18
+    |
+215 |     let _ = flag.cast_state::<Raw>();
+    |                  ^^^^^^^^^^ the trait `FromBytes` is not implemented for `bool`
+    |
+    = note: Consider adding `#[derive(FromBytes)]` to `bool`
+    = help: the following other types implement trait `FromBytes`:
+              ()
+              Atomic<i16>
+              Atomic<i32>
+              Atomic<i64>
+              Atomic<i8>
+              Atomic<isize>
+              Atomic<u16>
+              Atomic<u32>
+            and $N others
+    = note: required for `ReadWriteShared` to implement `Permits<bool, u8>`
+note: required for `Linked<Flag>` to implement `CastableState<Raw, ByValue>`
+   --> tests/ui/cast_state.rs:196:1
+    |
+196 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
+197 | struct Linked<S: Byte> {
+    |        ^^^^^^^^^^^^^^^
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `typestate_groups::Read: Permits<Small<Raw>, Small<Flag>>` is not satisfied
+   --> tests/ui/cast_state.rs:219:17
+    |
+219 |     let _ = raw.cast_state::<Flag>();
+    |                 ^^^^^^^^^^ the trait `Permits<Small<Raw>, Small<Flag>>` is not implemented for `typestate_groups::Read`
+    |
+    = help: `typestate_groups::Read` implements trait `Permits<Src, Dst>`:
+              Permits<Counted<S>, Counted<__TypestateGroupsTargetState>>
+              Permits<First<S>, First<__TypestateGroupsTargetState>>
+              Permits<Holder<S>, Holder<__TypestateGroupsTargetState>>
+              Permits<Large<S>, Large<__TypestateGroupsTargetState>>
+              Permits<Linked<S>, Linked<__TypestateGroupsTargetState>>
+              Permits<Pointer<S>, Pointer<__TypestateGroupsTargetState>>
+              Permits<Ref<'_, S>, Ref<'_, __TypestateGroupsTargetState>>
+              Permits<RefMut<'_, S>, RefMut<'_, __TypestateGroupsTargetState>>
+              Permits<S, D>
+              Permits<Second<S>, Second<__TypestateGroupsTargetState>>
+              Permits<Small<S>, Small<__TypestateGroupsTargetState>>
+              Permits<Tupled<S>, Tupled<__TypestateGroupsTargetState>>
+note: required for `Holder<Raw>` to implement `CastableState<Flag, ByValue>`
+   --> tests/ui/cast_state.rs:209:1
+    |
+209 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+210 | struct Holder<S: Byte> {
+    |        ^^^^^^^^^^^^^^^
+211 |     small: Box<Small<S>>,
+    |            --- unsatisfied trait bound introduced here
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: point this field at exactly `Tupled<Raw>`, not `(Tupled<Raw>, u8)`: a field that names its own struct must point at it
+   --> tests/ui/cast_state.rs:223:17
+    |
+223 |     let _ = raw.cast_state::<Raw>();
+    |                 ^^^^^^^^^^ the trait `typestate_groups::SameType<Tupled<Raw>>` is not implemented for `(Tupled<Raw>, u8)`
+    |
+    = note: or convert with `morph`
+help: `Tupled<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:203:1
+    |
+203 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
+note: required for `Tupled<Raw>` to implement `CastableState<Raw, ByValue>`
+   --> tests/ui/cast_state.rs:203:1
+    |
+203 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+204 | struct Tupled<S: Byte> {
+    |        ^^^^^^^^^^^^^^^
+205 |     value: S::Value,
+206 |     next: Option<NonNull<(Tupled<S>, S::Value)>>,
+    |           ------ unsatisfied trait bound introduced here
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0275]: overflow evaluating the requirement `First<Raw>: CastableState<Raw, ByMut>`
+   --> tests/ui/cast_state.rs:240:17
+    |
+240 |     let _ = raw.cast_state::<Raw>();
+    |                 ^^^^^^^^^^
+    |
+note: required for `ReadWriteShared` to implement `Permits<First<Raw>, First<Raw>>`
+   --> tests/ui/cast_state.rs:227:1
+    |
+227 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required for `Second<Raw>` to implement `CastableState<Raw, ByMut>`
+   --> tests/ui/cast_state.rs:233:1
+    |
+233 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+234 | struct Second<S: Byte> {
+    |        ^^^^^^^^^^^^^^^
+235 |     value: S::Value,
+236 |     first: Option<NonNull<First<S>>>,
+    |            ------ unsatisfied trait bound introduced here
+    = note: 2 redundant requirements hidden
+    = note: required for `First<Raw>` to implement `CastableState<Raw, ByValue>`
+note: required by a bound in `cast_state`
+   --> $WORKSPACE/typestate-groups/src/transmute.rs
+    |
+    |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+    |        ---------- required by a bound in this associated function
+    |     where
+    |         Self: CastableState<To, ByValue>,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+    = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)

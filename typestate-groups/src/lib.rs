@@ -18,7 +18,7 @@ pub use cast::{
     ReadShared, ReadWrite, ReadWriteShared,
 };
 pub use error_helpers::PinnedLayout;
-pub use indirect::{Indirect, NullNiche, Repointed};
+pub use indirect::{Indirect, NullNiche, Repointed, SameType};
 pub use layout::{
     PinnedTypeAlignment, PinnedTypeLayout, PinnedTypeSize, SameAlignment,
     SameLayout, SameSize, TypeAlignment, TypeLayout, TypeSize,

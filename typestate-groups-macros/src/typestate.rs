@@ -1,6 +1,6 @@
 //! `#[typestate]`: `WithState` and `Restate` for every typestate, plus
-//! `TransmutableState` and `CastableState` under `unsafe_transmute =
-//! true`.
+//! `TransmutableState`, `CastableState` and `Permits` under
+//! `unsafe_transmute = true`.
 
 mod args;
 mod cast;
@@ -32,7 +32,8 @@ pub(crate) struct TypeState {
     /// The generics every derived impl starts from: the struct's, plus
     /// the target state.
     target_generics: Generics,
-    /// Whether `TransmutableState` and `CastableState` are derived too.
+    /// Whether `TransmutableState`, `CastableState` and `Permits` are
+    /// derived too.
     transmute: Transmute,
     /// How each field changes between states, in field order. Empty
     /// without `unsafe_transmute = true`.
@@ -66,7 +67,7 @@ impl TypeState {
                 let shapes: Vec<FieldShape> = item_struct
                     .fields
                     .iter()
-                    .map(|field| field.shape(&state))
+                    .map(|field| field.shape(&state, &item_struct.ident))
                     .collect();
                 if shapes
                     .iter()
@@ -80,6 +81,27 @@ impl TypeState {
                              = true`",
                         ),
                     ));
+                }
+                if shapes.iter().any(|shape| {
+                    matches!(shape, FieldShape::SelfPointer(_))
+                }) {
+                    if let Some(FieldShape::Indirect(pointer)) =
+                        shapes.iter().find(|shape| {
+                            matches!(shape, FieldShape::Indirect(_))
+                        })
+                    {
+                        return Err(syn::Error::new_spanned(
+                            pointer,
+                            format!(
+                                "make this field `{state}::Assoc` or a \
+                                 type without `{state}`, or convert with \
+                                 `morph`: `{}` points at itself, so its \
+                                 other fields can't point at the state's \
+                                 types",
+                                item_struct.ident,
+                            ),
+                        ));
+                    }
                 }
                 item_struct.ensure_repr(align)?;
                 shapes
@@ -108,10 +130,13 @@ impl TypeState {
                 let transmutable_state_impl =
                     self.transmutable_state_impl(align);
                 let castable_state_impls = self.castable_state_impls();
+                let permits_impls = self.permits_impls();
                 Some(quote! {
                     #transmutable_state_impl
 
                     #castable_state_impls
+
+                    #permits_impls
                 })
             }
             Transmute::Off => None,

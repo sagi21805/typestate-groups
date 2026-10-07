@@ -64,6 +64,12 @@ error: add a field of type `S::Assoc` or a pointer to one, or remove `unsafe_tra
 128 | struct PhantomOnly<S: Meta> {
     |        ^^^^^^^^^^^
 
+error: make this field `S::Assoc` or a type without `S`, or convert with `morph`: `SelfAndBoxed` points at itself, so its other fields can't point at the state's types
+   --> tests/ui/typestate.rs:135:12
+    |
+135 |     value: Box<S::Value>,
+    |            ^^^^^^^^^^^^^
+
 error[E0589]: invalid alignment value: not a power of two
   --> tests/ui/typestate.rs:56:57
    |

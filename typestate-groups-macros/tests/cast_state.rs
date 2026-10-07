@@ -256,3 +256,122 @@ fn cast_state_turns_bools_and_cells_into_bytes() {
     assert_eq!(shared.value.get(), 4);
     assert_eq!(shared.cast_state::<Byte>().value, 4);
 }
+
+/// A node of an intrusive list, which points at its own struct.
+#[typestate(unsafe_transmute = true)]
+struct Node<S: Meta> {
+    value: S::Value,
+    next: Option<NonNull<Node<S>>>,
+}
+
+/// Links `a -> b -> c -> a` on the heap and returns the three nodes.
+fn cyclic_list() -> [*mut Node<Unsigned>; 3] {
+    let node = |value| {
+        Box::into_raw(Box::new(Node::<Unsigned> { value, next: None }))
+    };
+    let nodes = [node(u32::MAX), node(2), node(3)];
+    for (from, to) in nodes.iter().zip(nodes.iter().cycle().skip(1)) {
+        // SAFETY: every node comes from `Box::into_raw` and is still
+        // live.
+        unsafe { (**from).next = NonNull::new(*to) };
+    }
+    nodes
+}
+
+/// Frees nodes from `cyclic_list`.
+fn free_list(nodes: [*mut Node<Unsigned>; 3]) {
+    for node in nodes {
+        // SAFETY: `cyclic_list` made `node` with `Box::into_raw`, and no
+        // reference to it is live.
+        drop(unsafe { Box::from_raw(node) });
+    }
+}
+
+/// The values met walking `count` nodes from `node`.
+fn walk(mut node: &Node<Signed>, count: usize) -> Vec<i32> {
+    let mut values = Vec::new();
+    for _ in 0..count {
+        values.push(node.value);
+        // SAFETY: the list is cyclic, and every node is live.
+        node = unsafe { node.next.expect("the list is cyclic").as_ref() };
+    }
+    values
+}
+
+#[test]
+fn cast_state_follows_an_intrusive_cyclic_list() {
+    let nodes = cyclic_list();
+    let [a, b, _] = nodes;
+
+    // SAFETY: `a` is live, and nothing writes the list during the walk.
+    let head = unsafe { &*a }.cast_state_ref::<Signed>();
+    assert_eq!(walk(head, 4), [-1, 2, 3, -1]);
+
+    {
+        // SAFETY: `a` is live, and no other reference to it is.
+        let head = unsafe { &mut *a }.cast_state_mut::<Signed>();
+        head.value = -2;
+        let next = head.next.expect("the list is cyclic");
+        // SAFETY: `next` is `b`, which is live and not borrowed.
+        unsafe { (*next.as_ptr()).value = -5 };
+    }
+    // SAFETY: `a` and `b` are live, and no reference to them is.
+    unsafe {
+        assert_eq!(((*a).value, (*b).value), (u32::MAX - 1, u32::MAX - 4))
+    };
+
+    let outside = Node::<Unsigned> {
+        value: 7,
+        next: NonNull::new(a),
+    };
+    let outside = outside.cast_state::<Signed>();
+    assert_eq!(walk(&outside, 5), [7, -2, -5, 3, -2]);
+
+    free_list(nodes);
+}
+
+/// Holds another container behind a pointer.
+#[typestate(unsafe_transmute = true)]
+struct Tree<S: Meta> {
+    leaf: Box<Leaf<S>>,
+    raw: *mut Leaf<S>,
+}
+
+#[typestate(unsafe_transmute = true, align = 4)]
+struct Leaf<S: Meta> {
+    value: S::Value,
+    extra: S::Extra,
+}
+
+#[test]
+fn cast_state_reinterprets_containers_behind_pointers() {
+    let shared = Box::into_raw(Box::new(Leaf::<Unsigned> {
+        value: u32::MAX,
+        extra: [1, 0],
+    }));
+    let unsigned = Tree::<Unsigned> {
+        leaf: Box::new(Leaf {
+            value: u32::MAX - 1,
+            extra: [2, 0],
+        }),
+        raw: shared,
+    };
+
+    let view = unsigned.cast_state_ref::<Signed>();
+    assert_eq!(view.leaf.value, -2);
+
+    let mut signed = unsigned.cast_state::<Signed>();
+    signed.cast_state_mut::<Unsigned>().leaf.value = 5;
+    assert_eq!(signed.leaf.value, 5);
+    // SAFETY: `shared` is live, and no reference to it is.
+    unsafe {
+        assert_eq!((*signed.raw).value, -1);
+        (*signed.raw).extra = 3;
+    }
+
+    drop(signed);
+    // SAFETY: `shared` came from `Box::into_raw`, and no reference to it
+    // is live.
+    let shared = unsafe { Box::from_raw(shared) };
+    assert_eq!(shared.extra, 3u16.to_ne_bytes());
+}

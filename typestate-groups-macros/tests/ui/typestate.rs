@@ -129,4 +129,11 @@ struct PhantomOnly<S: Meta> {
     _value: core::marker::PhantomData<S::Value>,
 }
 
+// A struct that points at itself holds the state's types only by value.
+#[typestate(state = S, unsafe_transmute = true)]
+struct SelfAndBoxed<S: Meta> {
+    value: Box<S::Value>,
+    next: Option<core::ptr::NonNull<SelfAndBoxed<S>>>,
+}
+
 fn main() {}

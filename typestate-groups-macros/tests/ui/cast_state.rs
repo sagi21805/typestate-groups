@@ -193,4 +193,51 @@ fn without_unsafe_transmute(raw: Opaque<Raw>) {
     let _ = raw.cast_state::<Flag>();
 }
 
+#[typestate(unsafe_transmute = true)]
+struct Linked<S: Byte> {
+    value: S::Value,
+    next: Option<NonNull<Linked<S>>>,
+}
+
+/// Points at a tuple holding its own struct, not at the struct.
+#[typestate(unsafe_transmute = true)]
+struct Tupled<S: Byte> {
+    value: S::Value,
+    next: Option<NonNull<(Tupled<S>, S::Value)>>,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Holder<S: Byte> {
+    small: Box<Small<S>>,
+}
+
+fn transmute_state_self_pointer_writes_an_invalid_bool(flag: Linked<Flag>) {
+    let _ = flag.cast_state::<Raw>();
+}
+
+fn container_pointee_u8_two_into_bool(raw: Holder<Raw>) {
+    let _ = raw.cast_state::<Flag>();
+}
+
+fn self_pointer_to_a_tuple(raw: Tupled<Raw>) {
+    let _ = raw.cast_state::<Raw>();
+}
+
+/// Points at `Second`, which points back.
+#[typestate(unsafe_transmute = true)]
+struct First<S: Byte> {
+    value: S::Value,
+    second: Option<NonNull<Second<S>>>,
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Second<S: Byte> {
+    value: S::Value,
+    first: Option<NonNull<First<S>>>,
+}
+
+fn mutually_recursive_containers(raw: First<Raw>) {
+    let _ = raw.cast_state::<Raw>();
+}
+
 fn main() {}
