@@ -24,6 +24,12 @@ struct PartialDetached;
 #[state_types]
 trait SlabState<T: Slab> {
     type Meta;
+
+    /// Read from the trait's parameter, unless a group overrides it.
+    const OBJECTS: usize = 64 / T::SIZE;
+
+    /// Set by every group.
+    const NAME: &'static str;
 }
 
 #[derive(FromBytes, IntoBytes, Immutable)]
@@ -38,12 +44,17 @@ struct PartialMeta(u64);
 impl<T: Slab> SlabState<T> for (FreeDetached, FullHead) {
     #[size(8)]
     type Meta = FullFreeMeta;
+
+    const NAME: &'static str = "doubly linked";
 }
 
 #[group(Partial)]
 impl<T: Slab> SlabState<T> for (PartialDetached,) {
     #[size(8)]
     type Meta = PartialMeta;
+
+    const OBJECTS: usize = 1;
+    const NAME: &'static str = "partial";
 }
 
 #[typestate(state = S, unsafe_transmute = true)]
@@ -51,6 +62,16 @@ struct SlabDescriptor<T: Slab, S: SlabState<T>> {
     state: S::Meta,
     objects: NonNull<T>,
     next: Option<NonNull<SlabDescriptor<T, S>>>,
+}
+
+fn describe<T: Slab, S: SlabState<T>>() -> (usize, &'static str) {
+    (S::OBJECTS, S::NAME)
+}
+
+#[test]
+fn state_types_consts_default_from_the_trait_or_the_group() {
+    assert_eq!(describe::<Small, FullHead>(), (8, "doubly linked"));
+    assert_eq!(describe::<Small, PartialDetached>(), (1, "partial"));
 }
 
 #[test]

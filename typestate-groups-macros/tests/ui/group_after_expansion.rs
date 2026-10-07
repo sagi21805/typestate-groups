@@ -68,4 +68,17 @@ impl<S: Meta> Describe for Wrap<S> {
     }
 }
 
+#[state_types]
+trait Named {
+    type Value;
+
+    const NAME: &'static str;
+}
+
+// Every group sets a const without a default.
+#[group(Unnamed)]
+impl Named for (Unit,) {
+    type Value = u8;
+}
+
 fn main() {}

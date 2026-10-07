@@ -79,7 +79,8 @@ Each step below adds to the example above.
 
 ### 1. States and groups
 
-- `#[state_types]` lists the types that change with the state.
+- `#[state_types]` lists the types that change with the state. It can
+  also hold consts, which a group sets or overrides for all its states.
 - `#[state]` declares a state.
 - `#[group(Name)]` puts a tuple of states in a group and sets their types.
 - `#[typestate]` marks the container.

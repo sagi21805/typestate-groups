@@ -66,3 +66,14 @@ error[E0207]: the type parameter `T` is not constrained by the impl trait, self 
    |     ||
    |     |unconstrained type parameter
    |     help: remove the unused type parameter `T`
+
+error[E0046]: not all trait items implemented, missing: `NAME`
+  --> tests/ui/group_after_expansion.rs:79:1
+   |
+75 |     const NAME: &'static str;
+   |     ------------------------ `NAME` from trait
+...
+79 | #[group(Unnamed)]
+   | ^^^^^^^^^^^^^^^^^ missing `NAME` in implementation
+   |
+   = note: this error originates in the attribute macro `group` (in Nightly builds, run with -Z macro-backtrace for more info)
