@@ -41,4 +41,31 @@ impl<S: Meta> Describe for Wrap<S> {
     }
 }
 
+#[state]
+struct Generic<T>(core::marker::PhantomData<T>);
+#[state]
+struct Unit;
+
+// `T` is unconstrained in `impl<T> Meta for Unit`.
+#[group(Mixed)]
+impl<T> Meta for (Generic<T>, Unit) {
+    type Value = u8;
+}
+
+#[state]
+struct Owned<T>(core::marker::PhantomData<T>);
+
+#[group(Holding<T>)]
+impl<T> Meta for (Owned<T>,) {
+    type Value = Vec<T>;
+}
+
+// The group needs its argument, as in `#[group_impl(Holding<T>)]`.
+#[group_impl(Holding)]
+impl<S: Meta> Describe for Wrap<S> {
+    fn describe(&self) -> String {
+        String::new()
+    }
+}
+
 fn main() {}

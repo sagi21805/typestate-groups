@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Ident, ItemImpl, PathSegment, Token,
+    Ident, ItemImpl, Path, PathSegment, Token,
     parse::{Parse, ParseStream},
     parse_quote,
 };
@@ -12,7 +12,8 @@ use crate::syn_ext::{
 
 pub struct GroupImpl<'ast> {
     inner_impl: &'ast ItemImpl,
-    group_name: &'ast Ident,
+    /// The group, such as `FreeList<T>`.
+    group: &'ast Path,
     /// The impl's generic type parameter carrying the state.
     state: &'ast Ident,
 }
@@ -59,7 +60,7 @@ impl<'ast> GroupImpl<'ast> {
 
         Ok(GroupImpl {
             inner_impl: item_impl,
-            group_name: &args.group,
+            group: &args.group,
             state,
         })
     }
@@ -67,7 +68,12 @@ impl<'ast> GroupImpl<'ast> {
     /// `impl A<'a, X> for T -> impl __a_helper_mod::AHelper<'a, Group, X>
     /// for T where T::State: __a_helper_mod::Member<Group>`
     pub fn create_group_impl(&self) -> syn::Result<TokenStream> {
-        let group_name = self.group_name;
+        let group = self.group;
+        let group_name = &group
+            .segments
+            .last()
+            .expect("a parsed path has at least one segment")
+            .ident;
 
         if let Some(binding) =
             self.inner_impl.generics.assoc_type_binding(self.state)
@@ -98,8 +104,7 @@ impl<'ast> GroupImpl<'ast> {
         let helper_mod_ident =
             crate::naming::helper_mod_ident(&last.ident);
         last.ident = crate::naming::helper_trait_ident(&last.ident);
-        last.arguments
-            .insert_after_lifetimes(parse_quote!(#group_name));
+        last.arguments.insert_after_lifetimes(parse_quote!(#group));
 
         let mod_index = trait_path.segments.len() - 1;
         trait_path
@@ -112,7 +117,7 @@ impl<'ast> GroupImpl<'ast> {
             .segments
             .last_mut()
             .expect("a parsed trait path has at least one segment") =
-            parse_quote!(#member_ident<#group_name>);
+            parse_quote!(#member_ident<#group>);
         modified.generics.make_where_clause().predicates.push(
             parse_quote! {
                 <Self as ::typestate_groups::WithState>::State: #member
@@ -123,9 +128,9 @@ impl<'ast> GroupImpl<'ast> {
     }
 }
 
-/// `#[group_impl(Group, state = S)]`
+/// `#[group_impl(Group<T>, state = S)]`
 pub struct GroupImplArgs {
-    group: Ident,
+    group: Path,
     state: Option<Ident>,
 }
 

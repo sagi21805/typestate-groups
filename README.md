@@ -317,6 +317,61 @@ Don't implement `WithState`, `Restate`, `TransmutableState` or
 `CastableState` by hand. `#[typestate]` implements them, and their safety
 depends on the layout checks it generates.
 
+### 7. Generic states
+
+A state can take type, lifetime and const parameters. When a group's
+types depend on one, the group lists it, and `#[group_impl]` names the
+group the same way:
+
+```rust
+use core::marker::PhantomData;
+use typestate_groups::{
+    group, group_impl, group_trait, state, state_types, typestate,
+};
+
+#[state_types]
+trait Stage {
+    type Sample;
+}
+
+#[state]
+struct Buffered<T>(PhantomData<fn() -> T>);
+
+// `Sample` depends on `T`, so the group carries it.
+#[group(Buffers<T>)]
+impl<T: Copy> Stage for (Buffered<T>,) {
+    type Sample = Vec<T>;
+}
+
+#[typestate]
+struct Frame<S: Stage> {
+    sample: S::Sample,
+}
+
+#[group_trait(by = Stage)]
+trait Count {
+    fn count(&self) -> usize;
+}
+
+#[group_impl(Buffers<T>, state = S)]
+impl<T: Copy, S: Stage> Count for Frame<S> {
+    fn count(&self) -> usize {
+        self.sample.len()
+    }
+}
+
+fn main() {
+    let frame = Frame::<Buffered<u8>> { sample: vec![1, 2] };
+    assert_eq!(frame.count(), 2);
+}
+```
+
+Declare a generic state with `PhantomData<fn() -> T>`, which keeps it
+`Send`, `Sync` and covariant whatever `T` is. A group can't mix
+`Buffered<T>` with a state that lacks `T`, because rustc can't tell which
+`T` the plain state means. `#[size(N)]` can't pin a type that depends on
+a group parameter, so convert such states with `morph`.
+
 ## Installation
 
 ```toml

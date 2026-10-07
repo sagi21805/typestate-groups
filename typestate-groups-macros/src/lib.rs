@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
-use syn::{Ident, ItemImpl, ItemStruct, ItemTrait, parse_macro_input};
+use syn::{ItemImpl, ItemStruct, ItemTrait, parse_macro_input};
 
 use crate::{
-    group::Group,
+    group::{Group, GroupArgs},
     group_impl::{GroupImpl, GroupImplArgs},
     group_trait::{GroupTrait, GroupTraitArgs},
     state::State,
@@ -60,7 +60,8 @@ pub fn state_types(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Declares a group and implements a `#[state_types]` trait for its
 /// states. `#[size(N)]` on an associated type allows transmuting between
-/// them.
+/// them. A group whose types depend on an impl parameter lists it, as in
+/// `#[group(Buffers<T>)]`.
 ///
 /// ```
 /// use typestate_groups::{group, state, state_types};
@@ -85,9 +86,9 @@ pub fn state_types(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_impl = parse_macro_input!(item as ItemImpl);
-    let name = parse_macro_input!(attr as Ident);
+    let args = parse_macro_input!(attr as GroupArgs);
 
-    Group::new(&item_impl, &name)
+    Group::new(&item_impl, &args)
         .generate_group_impl()
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
@@ -95,7 +96,8 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Implements a `#[group_trait]` trait for types whose state is in the
 /// group. Name the state with `state = S` when the impl has several type
-/// parameters.
+/// parameters, and a generic group with its arguments, as in
+/// `#[group_impl(Buffers<T>, state = S)]`.
 ///
 /// See [`macro@group_trait`] for an example.
 #[proc_macro_attribute]

@@ -39,3 +39,30 @@ help: you might be missing a type parameter
    |
 38 | impl<S: Meta, NeverDeclared> Describe for Wrap<S> {
    |             +++++++++++++++
+
+error[E0107]: missing generics for struct `Holding`
+  --> tests/ui/group_after_expansion.rs:64:14
+   |
+64 | #[group_impl(Holding)]
+   |              ^^^^^^^ expected 1 generic argument
+   |
+note: struct defined here, with 1 generic parameter: `T`
+  --> tests/ui/group_after_expansion.rs:58:9
+   |
+58 | #[group(Holding<T>)]
+   |         ^^^^^^^
+59 | impl<T> Meta for (Owned<T>,) {
+   |      -
+help: add missing generic argument
+   |
+64 | #[group_impl(Holding<T>)]
+   |                     +++
+
+error[E0207]: the type parameter `T` is not constrained by the impl trait, self type, or predicates
+  --> tests/ui/group_after_expansion.rs:51:6
+   |
+51 | impl<T> Meta for (Generic<T>, Unit) {
+   |     -^-
+   |     ||
+   |     |unconstrained type parameter
+   |     help: remove the unused type parameter `T`

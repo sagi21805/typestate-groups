@@ -160,6 +160,63 @@ pub(crate) impl Generics {
 }
 
 #[ext]
+pub(crate) impl GenericParam {
+    /// `T: Bound` -> `T`, `'a` -> `a`, `const N: usize` -> `N`
+    fn name(&self) -> &Ident {
+        match self {
+            GenericParam::Lifetime(LifetimeParam { lifetime, .. }) => {
+                &lifetime.ident
+            }
+            GenericParam::Type(TypeParam { ident, .. })
+            | GenericParam::Const(ConstParam { ident, .. }) => ident,
+        }
+    }
+
+    /// This parameter without bounds or a default, as a struct declares
+    /// it.
+    ///
+    /// `T: Bound` -> `T`, `'a: 'b` -> `'a`, `const N: usize = 1` ->
+    /// `const N: usize`
+    fn unbounded(&self) -> GenericParam {
+        match self {
+            GenericParam::Lifetime(LifetimeParam { lifetime, .. }) => {
+                GenericParam::Lifetime(LifetimeParam::new(
+                    lifetime.clone(),
+                ))
+            }
+            GenericParam::Type(TypeParam { ident, .. }) => {
+                GenericParam::Type(TypeParam::from(ident.clone()))
+            }
+            GenericParam::Const(param) => {
+                GenericParam::Const(ConstParam {
+                    attrs: Vec::new(),
+                    default: None,
+                    ..param.clone()
+                })
+            }
+        }
+    }
+}
+
+#[ext]
+pub(crate) impl GenericArgument {
+    /// The parameter this argument names, when it is a bare name.
+    ///
+    /// `T` -> `T`, `'a` -> `a`, `Vec<T>` -> `None`
+    fn param_name(&self) -> Option<&Ident> {
+        match self {
+            GenericArgument::Lifetime(lifetime) => Some(&lifetime.ident),
+            GenericArgument::Type(Type::Path(TypePath {
+                qself: None,
+                path,
+                ..
+            })) => path.get_ident(),
+            _ => None,
+        }
+    }
+}
+
+#[ext]
 pub(crate) impl PathArguments {
     /// Inserts `arg` after the lifetimes.
     ///
@@ -217,6 +274,16 @@ pub(crate) impl WherePredicate {
             }) if path.is_ident(param) => Some(bounds),
             _ => None,
         }
+    }
+
+    /// Whether `ident` appears anywhere in this predicate.
+    fn mentions_ident(&self, ident: &Ident) -> bool {
+        let mut finder = FindIdent {
+            ident,
+            found: false,
+        };
+        finder.visit_where_predicate(self);
+        finder.found
     }
 
     /// This predicate with `from` renamed to `to`, when it mentions
@@ -285,7 +352,8 @@ pub(crate) impl<T: Parse> Option<T> {
     }
 }
 
-/// Finds `ident` inside one type, and stops visiting once it has.
+/// Finds `ident` inside one type or predicate, and stops visiting once it
+/// has.
 ///
 /// syn leaves a macro's tokens unparsed, so a `Type::Macro` falls back to
 /// scanning its tokens.

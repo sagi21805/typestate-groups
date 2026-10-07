@@ -41,11 +41,6 @@ impl inner::Meta for (A,) {
     type Value = u8;
 }
 
-#[group(PathState)]
-impl Meta for (inner::Hidden,) {
-    type Value = u8;
-}
-
 #[group(RefState)]
 impl Meta for (&A,) {
     type Value = u8;
@@ -68,6 +63,31 @@ impl Meta for (C,) {
 impl Meta for (D,) {
     #[size("eight")]
     type Value = u64;
+}
+
+#[state]
+struct Generic<T>(core::marker::PhantomData<T>);
+
+// `Value` depends on `T`, which the group doesn't carry.
+#[group(Unlisted)]
+impl<T> Meta for (Generic<T>,) {
+    type Value = Vec<T>;
+}
+
+#[group(NotAParam<U>)]
+impl<T> Meta for (Generic<T>,) {
+    type Value = u8;
+}
+
+#[group(NotAName<Vec<T>>)]
+impl<T> Meta for (Generic<T>,) {
+    type Value = u8;
+}
+
+#[group(GenericSize<T>)]
+impl<T> Meta for (Generic<T>,) {
+    #[size(8)]
+    type Value = Option<Box<T>>;
 }
 
 #[state_types]

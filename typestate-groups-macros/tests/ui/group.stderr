@@ -18,38 +18,56 @@ error: name the trait with a single identifier, and bring it into scope with `us
 40 | impl inner::Meta for (A,) {
    |      ^^^^^^^^^^^
 
-error: name each state with a single identifier, such as `(StateA, StateB)`
+error: name each state with a type path, such as `(StateA, StateB<T>)`
   --> tests/ui/group.rs:45:16
    |
-45 | impl Meta for (inner::Hidden,) {
-   |                ^^^^^^^^^^^^^
-
-error: name each state with a single identifier, such as `(StateA, StateB)`
-  --> tests/ui/group.rs:50:16
-   |
-50 | impl Meta for (&A,) {
+45 | impl Meta for (&A,) {
    |                ^^
 
 error: remove this attribute: `#[group]` allows only `#[size(N)]` on associated type `Value`
-  --> tests/ui/group.rs:56:5
+  --> tests/ui/group.rs:51:5
    |
-56 |     #[allow(dead_code)]
+51 |     #[allow(dead_code)]
    |     ^^^^^^^^^^^^^^^^^^^
 
 error: keep one attribute, `#[size(N)]`, on associated type `Value` inside `#[group]`
-  --> tests/ui/group.rs:64:10
+  --> tests/ui/group.rs:59:10
    |
-64 |     type Value = u64;
+59 |     type Value = u64;
    |          ^^^^^
 
 error: expected integer literal
-  --> tests/ui/group.rs:69:12
+  --> tests/ui/group.rs:64:12
    |
-69 |     #[size("eight")]
+64 |     #[size("eight")]
    |            ^^^^^^^
 
-error: add an associated type to `NoAssocType`, such as `type Value;`, for its groups to set
-  --> tests/ui/group.rs:74:7
+error: list `T` in the group, as in `#[group(Unlisted<T>)]`: `Value` is shared by the whole group
+  --> tests/ui/group.rs:74:18
    |
-74 | trait NoAssocType {
+74 |     type Value = Vec<T>;
+   |                  ^^^^^^
+
+error: list a parameter of this impl by its name, such as `#[group(FreeList<T>)]` for `impl<T>`
+  --> tests/ui/group.rs:77:19
+   |
+77 | #[group(NotAParam<U>)]
+   |                   ^
+
+error: list a parameter of this impl by its name, such as `#[group(FreeList<T>)]` for `impl<T>`
+  --> tests/ui/group.rs:82:18
+   |
+82 | #[group(NotAName<Vec<T>>)]
+   |                  ^^^^^^
+
+error: remove `#[size(8)]` from `Value`, and convert with `morph`: its layout depends on `T`
+  --> tests/ui/group.rs:90:18
+   |
+90 |     type Value = Option<Box<T>>;
+   |                  ^^^^^^^^^^^^^^
+
+error: add an associated type to `NoAssocType`, such as `type Value;`, for its groups to set
+  --> tests/ui/group.rs:94:7
+   |
+94 | trait NoAssocType {
    |       ^^^^^^^^^^^
