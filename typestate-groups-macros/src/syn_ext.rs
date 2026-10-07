@@ -4,10 +4,11 @@ use extend::ext;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens, quote};
 use syn::{
-    AssocType, Attribute, GenericArgument, Generics, Ident, Path,
-    PredicateType, Token, Type, TypeParam, TypeParamBound, TypePath,
-    WherePredicate,
+    AssocType, Attribute, ConstParam, GenericArgument, GenericParam,
+    Generics, Ident, LifetimeParam, Path, PathArguments, PredicateType,
+    Token, Type, TypeParam, TypeParamBound, TypePath, WherePredicate,
     parse::{Parse, ParseStream},
+    parse_quote,
     punctuated::Punctuated,
     visit::{self, Visit},
     visit_mut::VisitMut,
@@ -116,6 +117,27 @@ pub(crate) impl Generics {
         self.type_params_mut().find(|tp| tp.ident == *ident)
     }
 
+    /// The arguments that name these generics.
+    ///
+    /// `<'a, T: Bound, const N: usize>` -> `<'a, T, N>`
+    fn to_arguments(&self) -> PathArguments {
+        if self.params.is_empty() {
+            return PathArguments::None;
+        }
+        let args = self.params.iter().map(|param| -> GenericArgument {
+            match param {
+                GenericParam::Lifetime(LifetimeParam {
+                    lifetime, ..
+                }) => GenericArgument::Lifetime(lifetime.clone()),
+                GenericParam::Type(TypeParam { ident, .. })
+                | GenericParam::Const(ConstParam { ident, .. }) => {
+                    parse_quote!(#ident)
+                }
+            }
+        });
+        PathArguments::AngleBracketed(parse_quote!(<#(#args),*>))
+    }
+
     /// `S: Meta<Value = String>` -> `Value = String`
     fn assoc_type_binding(&self, param: &Ident) -> Option<&AssocType> {
         let inline = self
@@ -134,6 +156,28 @@ pub(crate) impl Generics {
             first.visit_type_param_bound(bound);
             first.0
         })
+    }
+}
+
+#[ext]
+pub(crate) impl PathArguments {
+    /// Inserts `arg` after the lifetimes.
+    ///
+    /// `<'a, T>`, `G` -> `<'a, G, T>`
+    fn insert_after_lifetimes(&mut self, arg: GenericArgument) {
+        if self.is_none() {
+            *self = PathArguments::AngleBracketed(parse_quote!(<>));
+        }
+        if let PathArguments::AngleBracketed(angle) = self {
+            let lifetimes = angle
+                .args
+                .iter()
+                .take_while(|arg| {
+                    matches!(arg, GenericArgument::Lifetime(_))
+                })
+                .count();
+            angle.args.insert(lifetimes, arg);
+        }
     }
 }
 

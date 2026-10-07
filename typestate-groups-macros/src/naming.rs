@@ -21,6 +21,11 @@ pub fn group_param_ident() -> Ident {
     format_ident!("__TypestateGroupsGroup")
 }
 
+/// The type a `#[group_trait]` blanket impl implements the trait for.
+pub fn implementor_ident() -> Ident {
+    format_ident!("__TypestateGroupsImplementor")
+}
+
 /// `{Trait}GroupMember`'s alias in a `#[group_trait]` helper module.
 pub fn helper_member_ident() -> Ident {
     format_ident!("Member")

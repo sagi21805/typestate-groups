@@ -2,12 +2,16 @@ use extend::ext;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    FnArg, Ident, ItemTrait, Pat, PatIdent, PatType, Path, Signature,
-    Token, TraitItem, TraitItemConst, TraitItemFn, TypePath,
+    FnArg, GenericParam, Ident, ItemTrait, Pat, PatIdent, PatType, Path,
+    Signature, Token, TraitItem, TraitItemConst, TraitItemFn, TypeParam,
+    TypePath, WherePredicate,
     parse::{Parse, ParseStream},
+    parse_quote,
 };
 
-use crate::syn_ext::PathExt as _;
+use crate::syn_ext::{
+    GenericsExt as _, PathArgumentsExt as _, PathExt as _,
+};
 
 pub struct GroupTrait<'ast> {
     args: &'ast GroupTraitArgs,
@@ -16,10 +20,13 @@ pub struct GroupTrait<'ast> {
     marker_trait: Path,
     /// `{Trait}GroupMember`
     member_trait: Path,
-    /// `<T::State as Trait>::Marker`
-    marker: TokenStream,
+    /// The type the blanket impl implements the trait for.
+    implementor: Ident,
     helper_ident: Ident,
     helper_mod_ident: Ident,
+    /// `__a_helper_mod::AHelper<'a, <<I as WithState>::State as
+    /// Trait>::Marker, T>`
+    helper_bound: Path,
 }
 
 impl<'ast> GroupTrait<'ast> {
@@ -28,6 +35,23 @@ impl<'ast> GroupTrait<'ast> {
         item_trait: &'ast ItemTrait,
     ) -> GroupTrait<'ast> {
         let state_types = &args.ty;
+        let implementor = crate::naming::implementor_ident();
+        let helper_ident =
+            crate::naming::helper_trait_ident(&item_trait.ident);
+        let helper_mod_ident =
+            crate::naming::helper_mod_ident(&item_trait.ident);
+
+        let mut helper_bound: Path =
+            parse_quote!(#helper_mod_ident::#helper_ident);
+        let helper_args = &mut helper_bound
+            .segments
+            .last_mut()
+            .expect("the path above has two segments")
+            .arguments;
+        *helper_args = item_trait.generics.to_arguments();
+        helper_args.insert_after_lifetimes(parse_quote! {
+            <<#implementor as ::typestate_groups::WithState>::State as #state_types>::Marker
+        });
 
         GroupTrait {
             args,
@@ -38,25 +62,42 @@ impl<'ast> GroupTrait<'ast> {
             member_trait: state_types
                 .path
                 .with_last_ident(crate::naming::group_member_ident),
-            marker: quote!(<T::State as #state_types>::Marker),
-            helper_ident: crate::naming::helper_trait_ident(
-                &item_trait.ident,
-            ),
-            helper_mod_ident: crate::naming::helper_mod_ident(
-                &item_trait.ident,
-            ),
+            implementor,
+            helper_ident,
+            helper_mod_ident,
+            helper_bound,
         }
     }
 
     /// The trait, its helper module, and a blanket impl forwarding to the
     /// helper impl of the state's group.
+    ///
+    /// ```ignore
+    /// #[group_trait(by = Meta)]
+    /// trait Describe<T>: Bound { fn describe(&self) -> T; }
+    /// // ->
+    /// trait Describe<T>: Bound { fn describe(&self) -> T; }
+    /// mod __describe_helper_mod {
+    ///     trait DescribeHelper<G: MetaGroupMarker, T>: Bound {
+    ///         fn describe(&self) -> T;
+    ///     }
+    ///     trait Member<G: MetaGroupMarker>: MetaGroupMember<G> {}
+    /// }
+    /// impl<T, I> Describe<T> for I
+    /// where
+    ///     I: WithState,
+    ///     <I as WithState>::State: Meta,
+    ///     I: DescribeHelper<<<I as WithState>::State as Meta>::Marker, T>,
+    /// { fn describe(&self) -> T { <I as DescribeHelper<..>>::describe(self) } }
+    /// ```
     pub fn generate_group_trait(&self) -> syn::Result<TokenStream> {
         let GroupTrait {
             marker_trait,
             member_trait,
-            marker,
+            implementor,
             helper_ident,
             helper_mod_ident,
+            helper_bound,
             ..
         } = self;
         let member_ident = crate::naming::helper_member_ident();
@@ -73,14 +114,7 @@ impl<'ast> GroupTrait<'ast> {
             items,
             ..
         } = self.item_trait;
-
-        if !generics.params.is_empty() {
-            return Err(syn::Error::new_spanned(
-                generics,
-                "remove the generic parameters: `#[group_trait]` doesn't \
-                 support them yet",
-            ));
-        }
+        let where_clause = &generics.where_clause;
 
         let declarations = items
             .iter()
@@ -108,11 +142,37 @@ impl<'ast> GroupTrait<'ast> {
             })
             .collect::<syn::Result<Vec<_>>>()?;
 
+        let mut helper_generics = generics.clone();
+        helper_generics.params.insert(
+            generics.lifetimes().count(),
+            parse_quote!(#group: #marker_trait),
+        );
+
         let state_types = &self.args.ty;
+        let mut impl_generics = generics.clone();
+        impl_generics
+            .params
+            .push(GenericParam::Type(TypeParam::from(
+                implementor.clone(),
+            )));
+        let implementor_bounds: [WherePredicate; 3] = [
+            parse_quote!(#implementor: ::typestate_groups::WithState),
+            parse_quote! {
+                <#implementor as ::typestate_groups::WithState>::State: #state_types
+            },
+            parse_quote!(#implementor: #helper_bound),
+        ];
+        impl_generics
+            .make_where_clause()
+            .predicates
+            .extend(implementor_bounds);
+        let (impl_generics, _, impl_where_clause) =
+            impl_generics.split_for_impl();
+        let (_, ty_generics, _) = generics.split_for_impl();
 
         Ok(quote! {
             #(#attrs)*
-            #unsafety #vis trait #trait_ident #colon_token #supertraits {
+            #unsafety #vis trait #trait_ident #generics #colon_token #supertraits #where_clause {
                 #(#declarations)*
             }
 
@@ -121,7 +181,7 @@ impl<'ast> GroupTrait<'ast> {
                 use super::*;
 
                 #(#attrs)*
-                pub trait #helper_ident<Marker: #marker_trait> {
+                pub trait #helper_ident #helper_generics #colon_token #supertraits #where_clause {
                     #(#items)*
                 }
 
@@ -130,12 +190,7 @@ impl<'ast> GroupTrait<'ast> {
                 impl<#group: #marker_trait, T: #member_trait<#group>> #member_ident<#group> for T {}
             }
 
-            impl<T> #trait_ident for T
-            where
-                T: ::typestate_groups::WithState,
-                T::State: #state_types,
-                T: #helper_mod_ident::#helper_ident<#marker>,
-            {
+            impl #impl_generics #trait_ident #ty_generics for #implementor #impl_where_clause {
                 #(#delegations)*
             }
         })
@@ -145,18 +200,16 @@ impl<'ast> GroupTrait<'ast> {
     fn delegate(&self, method: &TraitItemFn) -> syn::Result<TokenStream> {
         let sig = &method.sig;
         let args = sig.forwarded_args()?;
-
         let GroupTrait {
-            marker,
-            helper_ident,
-            helper_mod_ident,
+            implementor,
+            helper_bound,
             ..
         } = self;
         let method_ident = &sig.ident;
 
         Ok(quote! {
             #sig {
-                <T as #helper_mod_ident::#helper_ident<#marker>>::#method_ident(#(#args),*)
+                <#implementor as #helper_bound>::#method_ident(#(#args),*)
             }
         })
     }
