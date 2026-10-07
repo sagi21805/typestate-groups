@@ -1,12 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Ident, ItemImpl, PathArguments, PathSegment, Token,
+    Ident, ItemImpl, PathSegment, Token,
     parse::{Parse, ParseStream},
     parse_quote,
 };
 
-use crate::syn_ext::{GenericsExt as _, OptionExt as _, PathExt as _};
+use crate::syn_ext::{
+    GenericsExt as _, OptionExt as _, PathArgumentsExt as _,
+};
 
 pub struct GroupImpl<'ast> {
     inner_impl: &'ast ItemImpl,
@@ -62,8 +64,8 @@ impl<'ast> GroupImpl<'ast> {
         })
     }
 
-    /// `impl A for T -> impl __a_helper_mod::AHelper<Group> for T where
-    /// T::State: __a_helper_mod::Member<Group>`
+    /// `impl A<'a, X> for T -> impl __a_helper_mod::AHelper<'a, Group, X>
+    /// for T where T::State: __a_helper_mod::Member<Group>`
     pub fn create_group_impl(&self) -> syn::Result<TokenStream> {
         let group_name = self.group_name;
 
@@ -96,16 +98,21 @@ impl<'ast> GroupImpl<'ast> {
         let helper_mod_ident =
             crate::naming::helper_mod_ident(&last.ident);
         last.ident = crate::naming::helper_trait_ident(&last.ident);
-        last.arguments =
-            PathArguments::AngleBracketed(parse_quote!(<#group_name>));
+        last.arguments
+            .insert_after_lifetimes(parse_quote!(#group_name));
 
         let mod_index = trait_path.segments.len() - 1;
         trait_path
             .segments
             .insert(mod_index, PathSegment::from(helper_mod_ident));
 
-        let member = trait_path
-            .with_last_ident(|_| crate::naming::helper_member_ident());
+        let member_ident = crate::naming::helper_member_ident();
+        let mut member = trait_path.clone();
+        *member
+            .segments
+            .last_mut()
+            .expect("a parsed trait path has at least one segment") =
+            parse_quote!(#member_ident<#group_name>);
         modified.generics.make_where_clause().predicates.push(
             parse_quote! {
                 <Self as ::typestate_groups::WithState>::State: #member

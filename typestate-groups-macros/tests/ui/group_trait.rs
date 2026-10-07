@@ -15,11 +15,6 @@ trait AssocType {
 }
 
 #[group_trait(by = Meta)]
-trait Generic<T> {
-    fn a(&self) -> T;
-}
-
-#[group_trait(by = Meta)]
 trait PatternArg {
     fn combine(&self, (x, y): (i32, i32)) -> i32;
 }

@@ -4,20 +4,14 @@ error: remove this item: a `#[group_trait]` trait can hold only methods and cons
 12 |     type Extra;
    |     ^^^^^^^^^^^
 
-error: remove the generic parameters: `#[group_trait]` doesn't support them yet
-  --> tests/ui/group_trait.rs:18:14
-   |
-18 | trait Generic<T> {
-   |              ^^^
-
 error: bind argument 1 of `combine` to a plain name, such as `value: T`: `#[group_trait]` forwards arguments by name
-  --> tests/ui/group_trait.rs:24:23
+  --> tests/ui/group_trait.rs:19:23
    |
-24 |     fn combine(&self, (x, y): (i32, i32)) -> i32;
+19 |     fn combine(&self, (x, y): (i32, i32)) -> i32;
    |                       ^^^^^^
 
 error: add a `self` receiver to `make`: every `#[group_trait]` method needs one
-  --> tests/ui/group_trait.rs:29:5
+  --> tests/ui/group_trait.rs:24:5
    |
-29 |     fn make() -> Self;
+24 |     fn make() -> Self;
    |     ^^^^^^^^^^^^^^^^^
