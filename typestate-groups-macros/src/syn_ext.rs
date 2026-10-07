@@ -119,23 +119,23 @@ pub(crate) impl Generics {
 
     /// The arguments that name these generics.
     ///
-    /// `<'a, T: Bound, const N: usize>` -> `<'a, T, N>`
-    fn to_arguments(&self) -> PathArguments {
-        if self.params.is_empty() {
-            return PathArguments::None;
-        }
-        let args = self.params.iter().map(|param| -> GenericArgument {
-            match param {
-                GenericParam::Lifetime(LifetimeParam {
-                    lifetime, ..
-                }) => GenericArgument::Lifetime(lifetime.clone()),
-                GenericParam::Type(TypeParam { ident, .. })
-                | GenericParam::Const(ConstParam { ident, .. }) => {
-                    parse_quote!(#ident)
+    /// `<'a, T: Bound, const N: usize>` -> `'a, T, N`
+    fn to_arguments(&self) -> Punctuated<GenericArgument, Token![,]> {
+        self.params
+            .iter()
+            .map(|param| -> GenericArgument {
+                match param {
+                    GenericParam::Lifetime(LifetimeParam {
+                        lifetime,
+                        ..
+                    }) => GenericArgument::Lifetime(lifetime.clone()),
+                    GenericParam::Type(TypeParam { ident, .. })
+                    | GenericParam::Const(ConstParam { ident, .. }) => {
+                        parse_quote!(#ident)
+                    }
                 }
-            }
-        });
-        PathArguments::AngleBracketed(parse_quote!(<#(#args),*>))
+            })
+            .collect()
     }
 
     /// `S: Meta<Value = String>` -> `Value = String`

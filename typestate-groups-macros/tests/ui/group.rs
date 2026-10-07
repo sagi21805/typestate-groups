@@ -7,14 +7,6 @@ trait Meta {
     type Value;
 }
 
-mod inner {
-    pub trait Meta {
-        type Value;
-    }
-
-    pub struct Hidden;
-}
-
 #[state]
 struct A;
 #[state]
@@ -33,11 +25,6 @@ impl Foo {
 
 #[group(NotTuple)]
 impl Meta for A {
-    type Value = u8;
-}
-
-#[group(PathTrait)]
-impl inner::Meta for (A,) {
     type Value = u8;
 }
 
@@ -88,6 +75,17 @@ impl<T> Meta for (Generic<T>,) {
 impl<T> Meta for (Generic<T>,) {
     #[size(8)]
     type Value = Option<Box<T>>;
+}
+
+#[state_types]
+trait Owns<T> {
+    type Item;
+}
+
+// `Item` depends on the trait's `T`, which the group doesn't carry.
+#[group(NotCarried)]
+impl<T> Owns<T> for (A,) {
+    type Item = Vec<T>;
 }
 
 #[state_types]

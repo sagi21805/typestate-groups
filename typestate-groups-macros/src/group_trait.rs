@@ -3,8 +3,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
     FnArg, GenericParam, Ident, ItemTrait, Pat, PatIdent, PatType, Path,
-    Signature, Token, TraitItem, TraitItemConst, TraitItemFn, TypeParam,
-    TypePath, WherePredicate,
+    PathArguments, PathSegment, Signature, Token, TraitItem,
+    TraitItemConst, TraitItemFn, TypeParam, TypePath, WherePredicate,
     parse::{Parse, ParseStream},
     parse_quote,
 };
@@ -41,17 +41,14 @@ impl<'ast> GroupTrait<'ast> {
         let helper_mod_ident =
             crate::naming::helper_mod_ident(&item_trait.ident);
 
-        let mut helper_bound: Path =
-            parse_quote!(#helper_mod_ident::#helper_ident);
-        let helper_args = &mut helper_bound
-            .segments
-            .last_mut()
-            .expect("the path above has two segments")
-            .arguments;
-        *helper_args = item_trait.generics.to_arguments();
+        let trait_args = item_trait.generics.to_arguments();
+        let mut helper_args: PathArguments =
+            PathArguments::AngleBracketed(parse_quote!(<#trait_args>));
         helper_args.insert_after_lifetimes(parse_quote! {
             <<#implementor as ::typestate_groups::WithState>::State as #state_types>::Marker
         });
+        let helper_bound =
+            parse_quote!(#helper_mod_ident::#helper_ident #helper_args);
 
         GroupTrait {
             args,
@@ -224,8 +221,21 @@ impl Parse for GroupTraitArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         input.parse::<kw::by>()?;
         input.parse::<Token![=]>()?;
+        let ty: TypePath = input.parse()?;
 
-        Ok(GroupTraitArgs { ty: input.parse()? })
+        if let Some(PathSegment {
+            arguments: arguments @ PathArguments::AngleBracketed(_),
+            ..
+        }) = ty.path.segments.last()
+        {
+            return Err(syn::Error::new_spanned(
+                arguments,
+                "remove the arguments: `#[group_trait]` groups by a \
+                 `#[state_types]` trait without generic parameters",
+            ));
+        }
+
+        Ok(GroupTraitArgs { ty })
     }
 }
 

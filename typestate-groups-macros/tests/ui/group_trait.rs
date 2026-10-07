@@ -14,6 +14,16 @@ trait AssocType {
     fn a(&self) -> Self::Extra;
 }
 
+#[state_types]
+trait Generic<T> {
+    type Value;
+}
+
+#[group_trait(by = Generic<u8>)]
+trait ByGeneric {
+    fn a(&self);
+}
+
 #[group_trait(by = Meta)]
 trait PatternArg {
     fn combine(&self, (x, y): (i32, i32)) -> i32;

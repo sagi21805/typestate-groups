@@ -19,7 +19,9 @@ mod state_types;
 mod syn_ext;
 mod typestate;
 
-/// Declares a trait whose associated types group states.
+/// Declares a trait whose associated types group states. The trait can
+/// take generic parameters. Its group marker trait never does, so a group
+/// whose types depend on one lists it, as in `#[group(Owning<T>)]`.
 ///
 /// ```
 /// use typestate_groups::{group, state, state_types};

@@ -372,6 +372,11 @@ Declare a generic state with `PhantomData<fn() -> T>`, which keeps it
 `T` the plain state means. `#[size(N)]` can't pin a type that depends on
 a group parameter, so convert such states with `morph`.
 
+A `#[state_types]` trait can take parameters too, such as
+`trait Stage<T>` implemented with `impl<T> Stage<T> for (Sampled,)`. A
+group whose types use `T` lists it in the same way. `#[group_trait]`
+groups only by a trait without parameters.
+
 ## Installation
 
 ```toml

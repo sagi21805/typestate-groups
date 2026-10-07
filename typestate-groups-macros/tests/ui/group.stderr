@@ -1,73 +1,73 @@
 error: use `#[group]` on a trait impl, such as `impl Meta for (StateA, StateB)`
-  --> tests/ui/group.rs:30:1
+  --> tests/ui/group.rs:22:1
    |
-30 | / impl Foo {
-31 | |     fn method() {}
-32 | | }
+22 | / impl Foo {
+23 | |     fn method() {}
+24 | | }
    | |_^
 
 error: implement the trait for a tuple of states, such as `(StateA, StateB)`
-  --> tests/ui/group.rs:35:15
+  --> tests/ui/group.rs:27:15
    |
-35 | impl Meta for A {
+27 | impl Meta for A {
    |               ^
 
-error: name the trait with a single identifier, and bring it into scope with `use`
-  --> tests/ui/group.rs:40:6
-   |
-40 | impl inner::Meta for (A,) {
-   |      ^^^^^^^^^^^
-
 error: name each state with a type path, such as `(StateA, StateB<T>)`
-  --> tests/ui/group.rs:45:16
+  --> tests/ui/group.rs:32:16
    |
-45 | impl Meta for (&A,) {
+32 | impl Meta for (&A,) {
    |                ^^
 
 error: remove this attribute: `#[group]` allows only `#[size(N)]` on associated type `Value`
-  --> tests/ui/group.rs:51:5
+  --> tests/ui/group.rs:38:5
    |
-51 |     #[allow(dead_code)]
+38 |     #[allow(dead_code)]
    |     ^^^^^^^^^^^^^^^^^^^
 
 error: keep one attribute, `#[size(N)]`, on associated type `Value` inside `#[group]`
-  --> tests/ui/group.rs:59:10
+  --> tests/ui/group.rs:46:10
    |
-59 |     type Value = u64;
+46 |     type Value = u64;
    |          ^^^^^
 
 error: expected integer literal
-  --> tests/ui/group.rs:64:12
+  --> tests/ui/group.rs:51:12
    |
-64 |     #[size("eight")]
+51 |     #[size("eight")]
    |            ^^^^^^^
 
 error: list `T` in the group, as in `#[group(Unlisted<T>)]`: `Value` is shared by the whole group
-  --> tests/ui/group.rs:74:18
+  --> tests/ui/group.rs:61:18
    |
-74 |     type Value = Vec<T>;
+61 |     type Value = Vec<T>;
    |                  ^^^^^^
 
 error: list a parameter of this impl by its name, such as `#[group(FreeList<T>)]` for `impl<T>`
-  --> tests/ui/group.rs:77:19
+  --> tests/ui/group.rs:64:19
    |
-77 | #[group(NotAParam<U>)]
+64 | #[group(NotAParam<U>)]
    |                   ^
 
 error: list a parameter of this impl by its name, such as `#[group(FreeList<T>)]` for `impl<T>`
-  --> tests/ui/group.rs:82:18
+  --> tests/ui/group.rs:69:18
    |
-82 | #[group(NotAName<Vec<T>>)]
+69 | #[group(NotAName<Vec<T>>)]
    |                  ^^^^^^
 
 error: remove `#[size(8)]` from `Value`, and convert with `morph`: its layout depends on `T`
-  --> tests/ui/group.rs:90:18
+  --> tests/ui/group.rs:77:18
    |
-90 |     type Value = Option<Box<T>>;
+77 |     type Value = Option<Box<T>>;
    |                  ^^^^^^^^^^^^^^
 
-error: add an associated type to `NoAssocType`, such as `type Value;`, for its groups to set
-  --> tests/ui/group.rs:94:7
+error: list `T` in the group, as in `#[group(NotCarried<T>)]`: `Item` is shared by the whole group
+  --> tests/ui/group.rs:88:17
    |
-94 | trait NoAssocType {
+88 |     type Item = Vec<T>;
+   |                 ^^^^^^
+
+error: add an associated type to `NoAssocType`, such as `type Value;`, for its groups to set
+  --> tests/ui/group.rs:92:7
+   |
+92 | trait NoAssocType {
    |       ^^^^^^^^^^^

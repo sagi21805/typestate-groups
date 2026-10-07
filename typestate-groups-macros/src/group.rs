@@ -3,14 +3,14 @@ use quote::{ToTokens, quote};
 use syn::{
     AngleBracketedGenericArguments, GenericArgument, GenericParam,
     Generics, Ident, ImplItem, ImplItemType, ItemImpl, LifetimeParam,
-    LitInt, Token, Type, TypeParam,
+    LitInt, Path, PathArguments, Token, Type, TypeParam,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
 };
 
 use crate::syn_ext::{
-    GenericArgumentExt as _, GenericParamExt as _, TypeExt as _,
-    WherePredicateExt as _,
+    GenericArgumentExt as _, GenericParamExt as _, PathExt as _,
+    TypeExt as _, WherePredicateExt as _,
 };
 
 pub struct Group<'ast> {
@@ -47,7 +47,7 @@ impl<'ast> Group<'ast> {
     /// // and `impl<T: Slab> List for FreeTail<T>` likewise
     /// ```
     pub fn generate_group_impl(&self) -> syn::Result<TokenStream> {
-        let trait_name = self.trait_name()?;
+        let trait_path = self.trait_path()?;
         let states = self.states()?;
         let group_params = self.group_params()?;
 
@@ -62,7 +62,13 @@ impl<'ast> Group<'ast> {
         let types = items
             .iter()
             .filter(|item| matches!(item, ImplItem::Type(_)));
-        let marker_trait = crate::naming::group_marker_ident(trait_name);
+        let mut marker_trait =
+            trait_path.with_last_ident(crate::naming::group_marker_ident);
+        marker_trait
+            .segments
+            .last_mut()
+            .expect("a parsed trait path has at least one segment")
+            .arguments = PathArguments::None;
         let group = self.args;
         let group_struct = self.group_struct(&group_params);
         let marker_generics = self.marker_generics(&group_params);
@@ -81,7 +87,7 @@ impl<'ast> Group<'ast> {
             }
 
             #(
-                impl #impl_generics #trait_name for #states #where_clause {
+                impl #impl_generics #trait_path for #states #where_clause {
                     #items_tokens
                     type Marker = #group;
                     #layout_tokens
@@ -90,24 +96,19 @@ impl<'ast> Group<'ast> {
         })
     }
 
-    /// `impl Testing for (StateA, StateB)` -> `Testing`
-    fn trait_name(&self) -> syn::Result<&'ast Ident> {
-        let (trait_path, _) =
-            self.inner_impl.trait_.as_ref().ok_or_else(|| {
+    /// `impl Testing<T> for (StateA, StateB)` -> `Testing<T>`
+    fn trait_path(&self) -> syn::Result<&'ast Path> {
+        self.inner_impl
+            .trait_
+            .as_ref()
+            .map(|(trait_path, _)| trait_path)
+            .ok_or_else(|| {
                 syn::Error::new_spanned(
                     self.inner_impl,
                     "use `#[group]` on a trait impl, such as `impl Meta \
                      for (StateA, StateB)`",
                 )
-            })?;
-
-        trait_path.get_ident().ok_or_else(|| {
-            syn::Error::new_spanned(
-                trait_path,
-                "name the trait with a single identifier, and bring it \
-                 into scope with `use`",
-            )
-        })
+            })
     }
 
     /// `(StateA, StateB<T>) -> [StateA, StateB<T>]`

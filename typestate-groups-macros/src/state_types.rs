@@ -1,6 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{ItemTrait, TraitItem, TraitItemType, parse_quote};
+use syn::{
+    GenericArgument, ItemTrait, TraitItem, TraitItemType, parse_quote,
+};
+
+use crate::syn_ext::GenericsExt as _;
 
 pub struct StateTypes<'ast> {
     inner: &'ast ItemTrait,
@@ -34,12 +38,13 @@ impl<'ast> StateTypes<'ast> {
     }
 
     /// The trait plus its `{Trait}GroupMarker` and `{Trait}GroupMember`
-    /// traits.
+    /// traits. The member trait takes the trait's parameters after the
+    /// group.
     ///
     /// ```ignore
-    /// trait Meta { type A; type B; }
+    /// trait Meta<T> { type A; type B; }
     /// // ->
-    /// trait Meta: ::typestate_groups::State {
+    /// trait Meta<T>: ::typestate_groups::State {
     ///     type A;
     ///     type B;
     ///     type __TypestateGroupsLayoutA;
@@ -47,8 +52,8 @@ impl<'ast> StateTypes<'ast> {
     ///     type Marker: MetaGroupMarker<A = Self::A, B = Self::B>;
     /// }
     /// trait MetaGroupMarker { type A; type B; }
-    /// trait MetaGroupMember<G: MetaGroupMarker>:
-    ///     Meta<Marker = G, A = G::A, B = G::B> {}
+    /// trait MetaGroupMember<G: MetaGroupMarker, T>:
+    ///     Meta<T, Marker = G, A = G::A, B = G::B> {}
     /// ```
     pub fn create_group_marker(&self) -> syn::Result<TokenStream> {
         let vis = &self.inner.vis;
@@ -56,6 +61,7 @@ impl<'ast> StateTypes<'ast> {
         let marker_name = crate::naming::group_marker_ident(trait_ident);
         let member_name = crate::naming::group_member_ident(trait_ident);
         let group = crate::naming::group_param_ident();
+        let implementor = crate::naming::implementor_ident();
         let types = &self.types;
         let assocs: Vec<_> = types.iter().map(|ty| &ty.ident).collect();
 
@@ -76,9 +82,27 @@ impl<'ast> StateTypes<'ast> {
             .supertraits
             .push(parse_quote!(::typestate_groups::State));
 
-        let member_bound = quote! {
-            #trait_ident<Marker = #group, #(#assocs = #group::#assocs),*>
-        };
+        let generics = &self.inner.generics;
+        let mut trait_args = generics.to_arguments();
+        trait_args.push(parse_quote!(Marker = #group));
+        trait_args.extend(assocs.iter().map(|assoc| -> GenericArgument {
+            parse_quote!(#assoc = #group::#assoc)
+        }));
+        let member_bound = quote!(#trait_ident<#trait_args>);
+
+        let mut member_generics = generics.clone();
+        member_generics.params.insert(
+            generics.lifetimes().count(),
+            parse_quote!(#group: #marker_name),
+        );
+        let (_, member_args, _) = member_generics.split_for_impl();
+        let mut blanket_generics = member_generics.clone();
+        blanket_generics
+            .params
+            .push(parse_quote!(#implementor: #member_bound));
+        let (blanket_impl_generics, _, _) =
+            blanket_generics.split_for_impl();
+        let member_where_clause = &generics.where_clause;
 
         Ok(quote! {
             #original
@@ -87,9 +111,9 @@ impl<'ast> StateTypes<'ast> {
                 #(#types)*
             }
 
-            #vis trait #member_name<#group: #marker_name>: #member_bound {}
+            #vis trait #member_name #member_generics: #member_bound #member_where_clause {}
 
-            impl<#group: #marker_name, T: #member_bound> #member_name<#group> for T {}
+            impl #blanket_impl_generics #member_name #member_args for #implementor #member_where_clause {}
         })
     }
 }
