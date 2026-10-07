@@ -97,7 +97,9 @@ pub(crate) impl Path {
             }
     }
 
-    /// `a::Meta` -> `a::MetaGroupMarker`
+    /// This path with its last segment renamed and its arguments dropped.
+    ///
+    /// `a::Meta<T>` -> `a::MetaGroupMarker`
     fn with_last_ident(
         &self,
         rename: impl FnOnce(&Ident) -> Ident,
@@ -105,6 +107,7 @@ pub(crate) impl Path {
         let mut path = self.clone();
         if let Some(last) = path.segments.last_mut() {
             last.ident = rename(&last.ident);
+            last.arguments = PathArguments::None;
         }
         path
     }
@@ -138,8 +141,11 @@ pub(crate) impl Generics {
             .collect()
     }
 
-    /// `S: Meta<Value = String>` -> `Value = String`
-    fn assoc_type_binding(&self, param: &Ident) -> Option<&AssocType> {
+    /// Every `Assoc = Type` binding on a bound of `param`.
+    ///
+    /// `S: Meta<Value = String> + Other<Item = u8>` -> `[Value = String,
+    /// Item = u8]`
+    fn assoc_type_bindings(&self, param: &Ident) -> Vec<&AssocType> {
         let inline = self
             .type_params()
             .filter(|tp| tp.ident == *param)
@@ -151,11 +157,11 @@ pub(crate) impl Generics {
             .filter_map(|predicate| predicate.bounds_on(param))
             .flatten();
 
-        inline.chain(in_where).find_map(|bound| {
-            let mut first = FirstAssocType::default();
-            first.visit_type_param_bound(bound);
-            first.0
-        })
+        let mut bindings = AssocTypes::default();
+        for bound in inline.chain(in_where) {
+            bindings.visit_type_param_bound(bound);
+        }
+        bindings.0
     }
 }
 
@@ -238,18 +244,15 @@ pub(crate) impl PathArguments {
     }
 }
 
-/// Keeps the first `Assoc = Type` binding it visits.
+/// Collects the `Assoc = Type` bindings written directly on the bounds it
+/// visits, and none nested in their arguments.
 #[derive(Default)]
-struct FirstAssocType<'ast>(Option<&'ast AssocType>);
+struct AssocTypes<'ast>(Vec<&'ast AssocType>);
 
-impl<'ast> Visit<'ast> for FirstAssocType<'ast> {
+impl<'ast> Visit<'ast> for AssocTypes<'ast> {
     fn visit_generic_argument(&mut self, arg: &'ast GenericArgument) {
-        if self.0.is_some() {
-            return;
-        }
-        match arg {
-            GenericArgument::AssocType(assoc) => self.0 = Some(assoc),
-            _ => visit::visit_generic_argument(self, arg),
+        if let GenericArgument::AssocType(assoc) = arg {
+            self.0.push(assoc);
         }
     }
 }

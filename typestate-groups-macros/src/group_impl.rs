@@ -1,13 +1,14 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use syn::{
     Ident, ItemImpl, Path, PathSegment, Token,
     parse::{Parse, ParseStream},
     parse_quote,
+    spanned::Spanned as _,
 };
 
 use crate::syn_ext::{
-    GenericsExt as _, OptionExt as _, PathArgumentsExt as _,
+    GenericsExt as _, OptionExt as _, PathArgumentsExt as _, PathExt as _,
 };
 
 pub struct GroupImpl<'ast> {
@@ -67,28 +68,8 @@ impl<'ast> GroupImpl<'ast> {
 
     /// `impl A<'a, X> for T -> impl __a_helper_mod::AHelper<'a, Group, X>
     /// for T where T::State: __a_helper_mod::Member<Group>`
-    pub fn create_group_impl(&self) -> syn::Result<TokenStream> {
+    pub fn create_group_impl(&self) -> TokenStream {
         let group = self.group;
-        let group_name = &group
-            .segments
-            .last()
-            .expect("a parsed path has at least one segment")
-            .ident;
-
-        if let Some(binding) =
-            self.inner_impl.generics.assoc_type_binding(self.state)
-        {
-            return Err(syn::Error::new_spanned(
-                binding,
-                format!(
-                    "remove `{}`: `#[group_impl({group_name})]` already \
-                     sets `{}` to the type `{group_name}` declares",
-                    quote!(#binding),
-                    binding.ident,
-                ),
-            ));
-        }
-
         let mut modified = self.inner_impl.clone();
 
         let (trait_path, _) = modified
@@ -124,7 +105,59 @@ impl<'ast> GroupImpl<'ast> {
             },
         );
 
-        Ok(quote!(#modified))
+        let binding_checks = self.binding_checks();
+
+        quote! {
+            #modified
+
+            #binding_checks
+        }
+    }
+
+    /// One compile-time check per binding on the state, which fails when
+    /// the group sets that associated type itself.
+    ///
+    /// `S: Meta<Value = String>` -> `const _: () = { trait Unset { const
+    /// Value: bool = false; } .. assert!(!__TypestateGroupsSetsNumbers::Value,
+    /// "remove `Value = String`: ..") };`
+    fn binding_checks(&self) -> TokenStream {
+        let sets =
+            self.group.with_last_ident(crate::naming::group_sets_ident);
+        let group_name = &self
+            .group
+            .segments
+            .last()
+            .expect("a parsed path has at least one segment")
+            .ident;
+        let unset = crate::naming::unset_trait_ident();
+
+        self.inner_impl
+            .generics
+            .assoc_type_bindings(self.state)
+            .into_iter()
+            .map(|binding| {
+                let assoc = &binding.ident;
+                let msg = format!(
+                    "remove `{}`: `#[group_impl({group_name})]` already sets \
+                     `{assoc}` to the type `{group_name}` declares",
+                    quote!(#binding),
+                );
+
+                // An inherent const of the group's sets struct shadows the
+                // fallback trait's, so the assertion fails exactly when the
+                // group sets `assoc`.
+                quote_spanned! {binding.span()=>
+                    const _: () = {
+                        trait #unset {
+                            #[allow(non_upper_case_globals)]
+                            const #assoc: bool = false;
+                        }
+                        impl<T: ?Sized> #unset for T {}
+                        ::core::assert!(!#sets::#assoc, #msg);
+                    };
+                }
+            })
+            .collect()
     }
 }
 

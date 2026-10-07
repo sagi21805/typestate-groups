@@ -17,6 +17,14 @@ impl Meta for (Small,) {
     type Value = u32;
 }
 
+#[state]
+struct Big;
+
+#[group(Words)]
+impl Meta for (Big,) {
+    type Value = String;
+}
+
 #[typestate]
 struct Wrap<S: Meta> {
     value: S::Value,
@@ -44,7 +52,7 @@ impl Foo {
 #[group_impl(Numbers)]
 impl<S: Meta<Value = String>> Describe for Wrap<S> {
     fn describe(&self) -> String {
-        self.value.to_uppercase()
+        String::new()
     }
 }
 
@@ -58,7 +66,7 @@ impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
     }
 }
 
-#[group_impl(Numbers, state = S)]
+#[group_impl(Words, state = S)]
 impl<S: Meta, I> Describe for Pair<S, I>
 where
     I: Iterator<Item = u32>,

@@ -3,7 +3,7 @@ use quote::{ToTokens, quote};
 use syn::{
     AngleBracketedGenericArguments, GenericArgument, GenericParam,
     Generics, Ident, ImplItem, ImplItemType, ItemImpl, LifetimeParam,
-    LitInt, Path, PathArguments, Token, Type, TypeParam,
+    LitInt, Path, Token, Type, TypeParam,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
 };
@@ -62,15 +62,11 @@ impl<'ast> Group<'ast> {
         let types = items
             .iter()
             .filter(|item| matches!(item, ImplItem::Type(_)));
-        let mut marker_trait =
+        let marker_trait =
             trait_path.with_last_ident(crate::naming::group_marker_ident);
-        marker_trait
-            .segments
-            .last_mut()
-            .expect("a parsed trait path has at least one segment")
-            .arguments = PathArguments::None;
         let group = self.args;
         let group_struct = self.group_struct(&group_params);
+        let sets_struct = self.sets_struct(&items);
         let marker_generics = self.marker_generics(&group_params);
         let (marker_impl_generics, _, marker_where_clause) =
             marker_generics.split_for_impl();
@@ -79,6 +75,8 @@ impl<'ast> Group<'ast> {
 
         Ok(quote! {
             #group_struct
+
+            #sets_struct
 
             #(#size_asserts)*
 
@@ -251,6 +249,32 @@ impl<'ast> Group<'ast> {
             pub struct #name #impl_generics #fields;
 
             impl #impl_generics ::typestate_groups::Group for #name #ty_generics {}
+        }
+    }
+
+    /// A hidden struct whose inherent consts name the associated types
+    /// the group sets, so `#[group_impl]` can reject a binding on one.
+    ///
+    /// `type Head = ..;` -> `pub struct __TypestateGroupsSetsFreeList;
+    /// impl __TypestateGroupsSetsFreeList { pub const Head: bool = true; }`
+    fn sets_struct(&self, items: &[ImplItem]) -> TokenStream {
+        let sets = crate::naming::group_sets_ident(&self.args.name);
+        let assocs = items.iter().filter_map(|item| match item {
+            ImplItem::Type(ImplItemType { ident, .. }) => Some(ident),
+            _ => None,
+        });
+
+        // `allow`, not `expect`: the lints fire only when no
+        // `#[group_impl]` checks a binding against this group.
+        quote! {
+            #[doc(hidden)]
+            #[allow(dead_code)]
+            pub struct #sets;
+
+            #[allow(dead_code, non_upper_case_globals)]
+            impl #sets {
+                #(pub const #assocs: bool = true;)*
+            }
         }
     }
 

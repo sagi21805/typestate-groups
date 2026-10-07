@@ -129,3 +129,25 @@ fn generic_group_trait_keeps_lifetime_and_const_parameters() {
     let node = Node::<(), FreeHead> { value: 0, tag: () };
     assert_eq!(Repeat::<2>::repeat(&node, "hi"), ["hi", "hi"]);
 }
+
+#[group_trait(by = List)]
+trait Weigh {
+    fn weigh(&self) -> u32;
+}
+
+// `List` is the grouped trait, so a binding on `Meta` stays.
+#[group_impl(FreeList, state = S)]
+impl<T, S> Weigh for Node<T, S>
+where
+    S: List + Meta<Value = u32>,
+{
+    fn weigh(&self) -> u32 {
+        self.value + 1
+    }
+}
+
+#[test]
+fn group_impl_keeps_bindings_on_other_state_types() {
+    let node = Node::<(), FreeAttached> { value: 4, tag: () };
+    assert_eq!(node.weigh(), 5);
+}
