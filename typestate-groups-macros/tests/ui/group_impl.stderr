@@ -6,87 +6,32 @@ error: use `#[group_impl]` on a trait impl, such as `impl Trait for Wrap<S>`
 49 | | }
    | |_^
 
-error: add `state = <Ident>` to `#[group_impl]` to name the state parameter; only an impl with one generic type parameter can leave it out
-  --> tests/ui/group_impl.rs:81:5
-   |
-81 | impl<S: Meta, I> Describe for Pair<S, I> {
-   |     ^^^^^^^^^^^^
-
-error: set `state` to one of the impl's generic type parameters
-  --> tests/ui/group_impl.rs:87:31
-   |
-87 | #[group_impl(Numbers, state = T)]
-   |                               ^
-
-error[E0284]: type annotations needed: cannot satisfy `<S as Meta>::Value == String`
-  --> tests/ui/group_impl.rs:53:44
-   |
-53 | impl<S: Meta<Value = String>> Describe for Wrap<S> {
-   |                                            ^^^^^^^ cannot satisfy `<S as Meta>::Value == String`
-   |
-note: required for `Wrap<S>` to implement `DescribeHelper<Numbers>`
-  --> tests/ui/group_impl.rs:52:1
-   |
-52 | #[group_impl(Numbers)]
-   | ^^^^^^^^^^^^^^^^^^^^^^
-53 | impl<S: Meta<Value = String>> Describe for Wrap<S> {
-   |              --------------                ^^^^^^^
-   |              |
-   |              unsatisfied trait bound introduced here
-   = note: this error originates in the attribute macro `group_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0284]: type annotations needed: cannot satisfy `<S as Meta>::Value == String`
-  --> tests/ui/group_impl.rs:62:9
-   |
-62 |     for Pair<S, I>
-   |         ^^^^^^^^^^ cannot satisfy `<S as Meta>::Value == String`
-   |
-note: required for `Pair<S, I>` to implement `DescribeHelper<Numbers>`
-  --> tests/ui/group_impl.rs:60:1
-   |
-60 | #[group_impl(Numbers, state = S)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-61 | impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
-   |                                       -------------- unsatisfied trait bound introduced here
-62 |     for Pair<S, I>
-   |         ^^^^^^^^^^
-   = note: this error originates in the attribute macro `group_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0284]: type annotations needed
-  --> tests/ui/group_impl.rs:52:1
-   |
-52 | #[group_impl(Numbers)]
-   | ^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
-   |
-   = note: cannot satisfy `<S as Meta>::Value == _`
-note: required because it appears within the type `Wrap<S>`
-  --> tests/ui/group_impl.rs:29:8
-   |
-29 | struct Wrap<S: Meta> {
-   |        ^^^^
-note: required by a bound in `WithState`
-  --> $WORKSPACE/typestate-groups/src/lib.rs
-   |
-   | / pub trait WithState {
-   | |     type State: State;
-   | | }
-   | |_^ required by this bound in `WithState`
-   = note: this error originates in the attribute macro `group_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0080]: evaluation panicked: remove `Value = String`: `#[group_impl(Numbers)]` already sets `Value` to the type `Numbers` declares
+error: remove `Value = String`: `#[group_impl(Numbers)]` takes the state's types from `Numbers`. To pin a type `Numbers` doesn't set, declare it on the trait `Numbers` groups by, or group this trait by the trait that declares it
   --> tests/ui/group_impl.rs:53:14
    |
 53 | impl<S: Meta<Value = String>> Describe for Wrap<S> {
-   |              ^^^^^ evaluation of `_` failed here
+   |              ^^^^^^^^^^^^^^
 
-error[E0080]: evaluation panicked: remove `Value = String`: `#[group_impl(Numbers)]` already sets `Value` to the type `Numbers` declares
+error: remove `Value = String`: `#[group_impl(Numbers)]` takes the state's types from `Numbers`. To pin a type `Numbers` doesn't set, declare it on the trait `Numbers` groups by, or group this trait by the trait that declares it
   --> tests/ui/group_impl.rs:61:39
    |
 61 | impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
-   |                                       ^^^^^ evaluation of `_` failed here
+   |                                       ^^^^^^^^^^^^^^
 
-error[E0080]: evaluation panicked: remove `Value = String`: `#[group_impl(Words)]` already sets `Value` to the type `Words` declares
-  --> tests/ui/group_impl.rs:73:13
+error: remove `Value = String`: `#[group_impl(Words)]` takes the state's types from `Words`. To pin a type `Words` doesn't set, declare it on the trait `Words` groups by, or group this trait by the trait that declares it
+  --> tests/ui/group_impl.rs:74:13
    |
-73 |     S: Meta<Value = String>,
-   |             ^^^^^ evaluation of `_` failed here
+74 |     S: Meta<Value = String>,
+   |             ^^^^^^^^^^^^^^
+
+error: add `state = <Ident>` to `#[group_impl]` to name the state parameter; only an impl with one generic type parameter can leave it out
+  --> tests/ui/group_impl.rs:82:5
+   |
+82 | impl<S: Meta, I> Describe for Pair<S, I> {
+   |     ^^^^^^^^^^^^
+
+error: set `state` to one of the impl's generic type parameters
+  --> tests/ui/group_impl.rs:88:31
+   |
+88 | #[group_impl(Numbers, state = T)]
+   |                               ^

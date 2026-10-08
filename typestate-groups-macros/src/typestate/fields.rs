@@ -20,6 +20,8 @@ pub(super) enum FieldShape {
     /// `Option<NonNull<Node<S>>>`.
     SelfPointer(Box<Type>),
     /// Any other type, which must implement `typestate_groups::Indirect`.
+    /// This cover mostly pointer types like Box<T>, NonNull<T>, &'a mut T,
+    /// etc.
     Indirect(Box<Type>),
 }
 
@@ -37,6 +39,8 @@ pub(super) impl Field {
         } else if let Some(assoc) = ty.state_projection(state) {
             FieldShape::Projection(assoc.clone())
         } else if ty.mentions_ident(container) {
+            // TODO: An optimization could be storing the &self.ty
+            // reference here, if ownership is not really needed.
             FieldShape::SelfPointer(Box::new(ty.clone()))
         } else {
             FieldShape::Indirect(Box::new(ty.clone()))

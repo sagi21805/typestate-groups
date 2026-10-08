@@ -21,17 +21,6 @@ pub fn group_param_ident() -> Ident {
     format_ident!("__TypestateGroupsGroup")
 }
 
-/// `FreeList` -> `__TypestateGroupsSetsFreeList`, whose inherent consts
-/// name the associated types the group sets.
-pub fn group_sets_ident(group: &Ident) -> Ident {
-    format_ident!("__TypestateGroupsSets{}", group)
-}
-
-/// The fallback trait `#[group_impl]` checks a binding's name against.
-pub fn unset_trait_ident() -> Ident {
-    format_ident!("__TypestateGroupsUnset")
-}
-
 /// The type a `#[group_trait]` blanket impl implements the trait for.
 pub fn implementor_ident() -> Ident {
     format_ident!("__TypestateGroupsImplementor")

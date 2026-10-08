@@ -91,7 +91,7 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as GroupArgs);
 
     Group::new(&item_impl, &args)
-        .generate_group_impl()
+        .and_then(|group| group.generate_group_impl())
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }

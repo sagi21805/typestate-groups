@@ -1,12 +1,10 @@
 //! The `CastableState` and `Permits` impls `unsafe_transmute = true`
 //! derives.
 
-use core::iter;
-
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{
-    Ident, WherePredicate, parse_quote, parse_quote_spanned,
+    Ident, Type, WherePredicate, parse_quote, parse_quote_spanned,
     spanned::Spanned as _,
 };
 
@@ -48,13 +46,7 @@ impl TypeState {
                     // pointee valid in the target state under the access
                     // this `CastBy` gives it, `POINTEE_CHECK` keeps every
                     // pointee's size and alignment, and every other field
-                    // keeps its type. A pointer to the struct itself
-                    // reaches a struct this same claim covers
-                    // (`SameType`), with every projection checked under
-                    // that pointer's access too. Accesses compose by
-                    // sharing if either side shares and by needing both
-                    // ways only if both do, so every node reachable along
-                    // a chain of such pointers is covered.
+                    // keeps its type.
                     unsafe impl #impl_generics ::typestate_groups::CastableState<#target_state, #by>
                         for #struct_ident #ty_generics #where_clause
                     {
@@ -68,13 +60,7 @@ impl TypeState {
     /// The bounds that keep a field valid in the target state when the
     /// container is cast `by`.
     ///
-    /// `S::P -> ReadShared: Permits<S::P, S2::P>`,
-    /// `F<Node<S>> -> <F<Node<S>> as Indirect>::Pointee:
-    /// SameType<Node<S>>,
-    /// <F<Node<S>> as Indirect>::CastStateRef: Permits<S::P, S2::P>`,
-    /// `F<S> -> F<S>: Indirect, F<S2>: Indirect,
-    /// <F<S> as Indirect>::CastStateRef:
-    /// Permits<<F<S> as Indirect>::Pointee, <F<S2> as Indirect>::Pointee>`
+    /// `S::P -> ReadShared: Permits<S::P, S2::P>`
     fn cast_predicates(
         &self,
         shape: &FieldShape,
@@ -83,52 +69,80 @@ impl TypeState {
         match shape {
             FieldShape::Fixed => Vec::new(),
             FieldShape::Projection(assoc) => {
-                vec![self.permits_projection(by.field_access(), assoc)]
+                vec![self.permits_projection(
+                    ProjectionAccess::Field(by.field_access()),
+                    assoc,
+                )]
             }
             FieldShape::SelfPointer(src) => {
-                let struct_ident = &self.item_struct.ident;
-                let (_, ty_generics, _) =
-                    self.item_struct.generics.split_for_impl();
-                let access = by.pointee_access();
-                let pointee_access = quote! {
-                    <#src as ::typestate_groups::Indirect>::#access
-                };
-
-                iter::once(parse_quote_spanned! {src.span()=>
-                    <#src as ::typestate_groups::Indirect>::Pointee:
-                        ::typestate_groups::SameType<#struct_ident #ty_generics>
-                })
-                .chain(self.projections().map(|assoc| {
-                    self.permits_projection(&pointee_access, assoc)
-                }))
-                .collect()
+                self.self_pointer_predicates(src, by)
             }
-            FieldShape::Indirect(src) => {
-                let dst = self.in_target_state(src);
-                let access = by.pointee_access();
-                vec![
-                    parse_quote_spanned! {src.span()=>
-                        #src: ::typestate_groups::Indirect
-                    },
-                    parse_quote_spanned! {src.span()=>
-                        #dst: ::typestate_groups::Indirect
-                    },
-                    parse_quote_spanned! {src.span()=>
-                        <#src as ::typestate_groups::Indirect>::#access:
-                            ::typestate_groups::Permits<
-                                <#src as ::typestate_groups::Indirect>::Pointee,
-                                <#dst as ::typestate_groups::Indirect>::Pointee,
-                            >
-                    },
-                ]
-            }
+            FieldShape::Indirect(src) => self.indirect_predicates(src, by),
         }
+    }
+
+    /// The bounds that keep a field pointing at this container valid,
+    /// checked on every projection through the pointer's access.
+    ///
+    /// `F<Node<S>> -> <F<Node<S>> as Indirect>::Pointee:
+    /// SameType<Node<S>>,
+    /// <F<Node<S>> as Indirect>::CastStateRef: Permits<S::P, S2::P>`
+    fn self_pointer_predicates(
+        &self,
+        src: &Type,
+        by: CastBy,
+    ) -> Vec<WherePredicate> {
+        let struct_ident = &self.item_struct.ident;
+        let (_, ty_generics, _) =
+            self.item_struct.generics.split_for_impl();
+
+        let mut predicates = vec![parse_quote_spanned! {src.span() =>
+            <#src as ::typestate_groups::Indirect>::Pointee:
+                ::typestate_groups::SameType<#struct_ident #ty_generics>
+        }];
+        predicates.extend(self.projections().map(|assoc| {
+            self.permits_projection(
+                ProjectionAccess::Pointee { pointer: src, by },
+                assoc,
+            )
+        }));
+        predicates
+    }
+
+    /// The bounds that keep a field pointing at another container valid.
+    ///
+    /// `F<S> -> F<S>: Indirect, F<S2>: Indirect,
+    /// <F<S> as Indirect>::CastStateRef:
+    /// Permits<<F<S> as Indirect>::Pointee, <F<S2> as Indirect>::Pointee>`
+    fn indirect_predicates(
+        &self,
+        src: &Type,
+        by: CastBy,
+    ) -> Vec<WherePredicate> {
+        let dst = self.in_target_state(src);
+        let access = by.pointee_access();
+
+        vec![
+            parse_quote_spanned! {src.span()=>
+                #src: ::typestate_groups::Indirect
+            },
+            parse_quote_spanned! {src.span()=>
+                #dst: ::typestate_groups::Indirect
+            },
+            parse_quote_spanned! {src.span()=>
+                <#src as ::typestate_groups::Indirect>::#access:
+                    ::typestate_groups::Permits<
+                        <#src as ::typestate_groups::Indirect>::Pointee,
+                        <#dst as ::typestate_groups::Indirect>::Pointee,
+                    >
+            },
+        ]
     }
 
     /// `access: Permits<S::assoc, S2::assoc>`
     fn permits_projection(
         &self,
-        access: impl ToTokens,
+        access: ProjectionAccess,
         assoc: &Ident,
     ) -> WherePredicate {
         let state = &self.state;
@@ -268,6 +282,30 @@ impl ToTokens for CastBy {
     }
 }
 
+/// The `Access` a projection is used through.
+enum ProjectionAccess<'a> {
+    /// A field held by the container, given this access by the cast.
+    Field(Access),
+    /// A field reached through `pointer`, given the access `Indirect`
+    /// names for the cast.
+    Pointee { pointer: &'a Type, by: CastBy },
+}
+
+impl ToTokens for ProjectionAccess<'_> {
+    /// `Pointee { F, Ref }` -> `<F as Indirect>::CastStateRef`
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            ProjectionAccess::Field(access) => access.to_tokens(tokens),
+            ProjectionAccess::Pointee { pointer, by } => {
+                let assoc = by.pointee_access();
+                tokens.extend(quote! {
+                    <#pointer as ::typestate_groups::Indirect>::#assoc
+                });
+            }
+        }
+    }
+}
+
 /// How cast bytes are used, one per `typestate_groups::Access` type.
 #[derive(Clone, Copy)]
 enum Access {
@@ -288,7 +326,7 @@ impl Access {
     /// The casts that prove a container's bytes valid under this access.
     ///
     /// `ReadWriteShared -> [Mut, Ref]`
-    fn casts(self) -> &'static [CastBy] {
+    const fn casts(self) -> &'static [CastBy] {
         match self {
             Access::Read => &[CastBy::Value],
             Access::ReadShared => &[CastBy::Ref],

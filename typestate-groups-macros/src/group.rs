@@ -1,3 +1,4 @@
+use extend::ext;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{
@@ -16,17 +17,25 @@ use crate::syn_ext::{
 pub struct Group<'ast> {
     inner_impl: &'ast ItemImpl,
     args: &'ast GroupArgs,
+    /// The trait, such as `List`.
+    trait_path: &'ast Path,
+    states: Vec<&'ast Type>,
+    /// The impl's parameters that the group lists, in the group's order.
+    params: Vec<&'ast GenericParam>,
 }
 
 impl<'ast> Group<'ast> {
     pub fn new(
         item_impl: &'ast ItemImpl,
         args: &'ast GroupArgs,
-    ) -> Group<'ast> {
-        Group {
+    ) -> syn::Result<Group<'ast>> {
+        Ok(Group {
+            trait_path: item_impl.trait_path()?,
+            states: item_impl.states()?,
+            params: args.impl_params(&item_impl.generics)?,
             inner_impl: item_impl,
             args,
-        }
+        })
     }
 
     /// The group struct, its marker impl, and the trait impl for every
@@ -47,43 +56,66 @@ impl<'ast> Group<'ast> {
     /// // and `impl<T: Slab> List for FreeTail<T>` likewise
     /// ```
     pub fn generate_group_impl(&self) -> syn::Result<TokenStream> {
-        let trait_path = self.trait_path()?;
-        let states = self.states()?;
-        let group_params = self.group_params()?;
+        let mut items = self.inner_impl.items.clone();
+        self.require_group_level_types(&items)?;
+        let layouts = self.layouts(&mut items)?;
 
-        let mut items: Vec<ImplItem> = self.inner_impl.items.clone();
-        self.require_group_level_types(&items, &group_params)?;
-        let layouts = self.layouts(&mut items, &group_params)?;
+        let group_struct = self.group_struct();
         let size_asserts = layouts.iter().map(|layout| &layout.assert);
-        let layout_items = layouts.iter().map(|layout| &layout.item);
-
-        let items_tokens = quote! { #(#items)* };
-        let layout_tokens = quote! { #(#layout_items)* };
-        let types = items
-            .iter()
-            .filter(|item| matches!(item, ImplItem::Type(_)));
-        let marker_trait =
-            trait_path.with_last_ident(crate::naming::group_marker_ident);
-        let group = self.args;
-        let group_struct = self.group_struct(&group_params);
-        let sets_struct = self.sets_struct(&items);
-        let marker_generics = self.marker_generics(&group_params);
-        let (marker_impl_generics, _, marker_where_clause) =
-            marker_generics.split_for_impl();
-        let (impl_generics, _, where_clause) =
-            self.inner_impl.generics.split_for_impl();
+        let marker_impl = self.marker_impl(&items);
+        let state_impls = self.state_impls(&items, &layouts);
 
         Ok(quote! {
             #group_struct
 
-            #sets_struct
-
             #(#size_asserts)*
 
-            impl #marker_impl_generics #marker_trait for #group #marker_where_clause {
+            #marker_impl
+
+            #state_impls
+        })
+    }
+
+    /// The marker trait impl for the group, holding the associated
+    /// types.
+    ///
+    /// `type Head = FreeHead<T>;` -> `impl<T: Slab> ListGroupMarker for
+    /// FreeList<T> { type Head = FreeHead<T>; }`
+    fn marker_impl(&self, items: &[ImplItem]) -> TokenStream {
+        let marker_trait = self
+            .trait_path
+            .with_last_ident(crate::naming::group_marker_ident);
+        let group = self.args;
+        let generics = self.marker_generics();
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let types = items
+            .iter()
+            .filter(|item| matches!(item, ImplItem::Type(_)));
+
+        quote! {
+            impl #impl_generics #marker_trait for #group #where_clause {
                 #(#types)*
             }
+        }
+    }
 
+    /// The trait impl for every state, with the group as its `Marker`
+    /// and the layout of every associated type.
+    fn state_impls(
+        &self,
+        items: &[ImplItem],
+        layouts: &[TypeLayout],
+    ) -> TokenStream {
+        let trait_path = self.trait_path;
+        let states = &self.states;
+        let group = self.args;
+        let items_tokens = quote! { #(#items)* };
+        let layout_items = layouts.iter().map(|layout| &layout.item);
+        let layout_tokens = quote! { #(#layout_items)* };
+        let (impl_generics, _, where_clause) =
+            self.inner_impl.generics.split_for_impl();
+
+        quote! {
             #(
                 impl #impl_generics #trait_path for #states #where_clause {
                     #items_tokens
@@ -91,69 +123,18 @@ impl<'ast> Group<'ast> {
                     #layout_tokens
                 }
             )*
-        })
+        }
     }
 
-    /// `impl Testing<T> for (StateA, StateB)` -> `Testing<T>`
-    fn trait_path(&self) -> syn::Result<&'ast Path> {
+    /// The names of the impl's parameters that the group doesn't list.
+    fn other_params(&self) -> Vec<&'ast Ident> {
         self.inner_impl
-            .trait_
-            .as_ref()
-            .map(|(trait_path, _)| trait_path)
-            .ok_or_else(|| {
-                syn::Error::new_spanned(
-                    self.inner_impl,
-                    "use `#[group]` on a trait impl, such as `impl Meta \
-                     for (StateA, StateB)`",
-                )
-            })
-    }
-
-    /// `(StateA, StateB<T>) -> [StateA, StateB<T>]`
-    fn states(&self) -> syn::Result<Vec<&'ast Type>> {
-        let Type::Tuple(tup) = self.inner_impl.self_ty.as_ref() else {
-            return Err(syn::Error::new_spanned(
-                &self.inner_impl.self_ty,
-                "implement the trait for a tuple of states, such as \
-                 `(StateA, StateB)`",
-            ));
-        };
-
-        tup.elems
-            .iter()
-            .map(|state| match state.peeled() {
-                Type::Path(_) => Ok(state),
-                _ => Err(syn::Error::new_spanned(
-                    state,
-                    "name each state with a type path, such as `(StateA, \
-                     StateB<T>)`",
-                )),
-            })
-            .collect()
-    }
-
-    /// The impl's parameters that the group lists, in the group's order.
-    ///
-    /// `#[group(FreeList<T>)] impl<'a, T: Slab>` -> `[T: Slab]`
-    fn group_params(&self) -> syn::Result<Vec<&'ast GenericParam>> {
-        self.args
+            .generics
             .params
             .iter()
-            .map(|arg| {
-                let param = arg.param_name().and_then(|name| {
-                    self.inner_impl
-                        .generics
-                        .params
-                        .iter()
-                        .find(|param| param.name() == name)
-                });
-                param.ok_or_else(|| {
-                    syn::Error::new_spanned(
-                        arg,
-                        "list a parameter of this impl by its name, such \
-                         as `#[group(FreeList<T>)]` for `impl<T>`",
-                    )
-                })
+            .map(|param| param.name())
+            .filter(|name| {
+                !self.params.iter().any(|param| param.name() == *name)
             })
             .collect()
     }
@@ -163,17 +144,9 @@ impl<'ast> Group<'ast> {
     fn require_group_level_types(
         &self,
         items: &[ImplItem],
-        group_params: &[&GenericParam],
     ) -> syn::Result<()> {
         let name = &self.args.name;
-        let others: Vec<&Ident> = self
-            .inner_impl
-            .generics
-            .params
-            .iter()
-            .filter(|param| !group_params.contains(param))
-            .map(|param| param.name())
-            .collect();
+        let others = self.other_params();
 
         for item in items {
             let ImplItem::Type(ImplItemType { ident, ty, .. }) = item
@@ -187,8 +160,8 @@ impl<'ast> Group<'ast> {
                     ty,
                     format!(
                         "list `{param}` in the group, as in \
-                         `#[group({name}<{param}>)]`: `{ident}` is shared \
-                         by the whole group"
+                         `#[group({name}<{param}>)]`: `{ident}` is \
+                         shared by the whole group"
                     ),
                 ));
             }
@@ -200,13 +173,12 @@ impl<'ast> Group<'ast> {
     fn layouts(
         &self,
         items: &mut [ImplItem],
-        group_params: &[&GenericParam],
     ) -> syn::Result<Vec<TypeLayout>> {
         items
             .iter_mut()
             .filter_map(|item| match item {
                 ImplItem::Type(impl_ty) => {
-                    Some(TypeLayout::new(impl_ty, self.args, group_params))
+                    Some(TypeLayout::new(impl_ty, self.args, &self.params))
                 }
                 _ => None,
             })
@@ -216,12 +188,13 @@ impl<'ast> Group<'ast> {
     /// The group struct, holding its parameters in a `PhantomData`, and
     /// its `Group` impl.
     ///
-    /// `FreeList<'a, T>` -> `pub struct FreeList<'a, T>(PhantomData<fn() ->
-    /// (&'a (), T)>);`
-    fn group_struct(&self, group_params: &[&GenericParam]) -> TokenStream {
+    /// `FreeList<'a, T>` -> `pub struct FreeList<'a, T>(PhantomData<fn()
+    /// -> (&'a (), T)>);`
+    fn group_struct(&self) -> TokenStream {
         let name = &self.args.name;
         let generics = Generics {
-            params: group_params
+            params: self
+                .params
                 .iter()
                 .map(|param| param.unbounded())
                 .collect(),
@@ -229,7 +202,7 @@ impl<'ast> Group<'ast> {
         };
         let (impl_generics, ty_generics, _) = generics.split_for_impl();
         let phantoms =
-            group_params.iter().filter_map(|param| match param {
+            self.params.iter().filter_map(|param| match param {
                 GenericParam::Lifetime(LifetimeParam {
                     lifetime, ..
                 }) => Some(quote!(&#lifetime ())),
@@ -239,7 +212,7 @@ impl<'ast> Group<'ast> {
                 GenericParam::Const(_) => None,
             });
 
-        let fields = (!group_params.is_empty()).then(|| {
+        let fields = (!self.params.is_empty()).then(|| {
             quote! {
                 (::core::marker::PhantomData<fn() -> (#(#phantoms,)*)>)
             }
@@ -252,45 +225,15 @@ impl<'ast> Group<'ast> {
         }
     }
 
-    /// A hidden struct whose inherent consts name the associated types
-    /// the group sets, so `#[group_impl]` can reject a binding on one.
-    ///
-    /// `type Head = ..;` -> `pub struct __TypestateGroupsSetsFreeList;
-    /// impl __TypestateGroupsSetsFreeList { pub const Head: bool = true; }`
-    fn sets_struct(&self, items: &[ImplItem]) -> TokenStream {
-        let sets = crate::naming::group_sets_ident(&self.args.name);
-        let assocs = items.iter().filter_map(|item| match item {
-            ImplItem::Type(ImplItemType { ident, .. }) => Some(ident),
-            _ => None,
-        });
-
-        // `allow`, not `expect`: the lints fire only when no
-        // `#[group_impl]` checks a binding against this group.
-        quote! {
-            #[doc(hidden)]
-            #[allow(dead_code)]
-            pub struct #sets;
-
-            #[allow(dead_code, non_upper_case_globals)]
-            impl #sets {
-                #(pub const #assocs: bool = true;)*
-            }
-        }
-    }
-
     /// The group's parameters with their bounds, and the impl's
     /// where-predicates that mention no other parameter.
-    fn marker_generics(&self, group_params: &[&GenericParam]) -> Generics {
+    fn marker_generics(&self) -> Generics {
         let impl_generics = &self.inner_impl.generics;
-        let others: Vec<&Ident> = impl_generics
-            .params
-            .iter()
-            .filter(|param| !group_params.contains(param))
-            .map(|param| param.name())
-            .collect();
+        let others = self.other_params();
 
         let mut generics = Generics {
-            params: group_params
+            params: self
+                .params
                 .iter()
                 .map(|&param| param.clone())
                 .collect(),
@@ -317,6 +260,36 @@ pub struct GroupArgs {
     params: Punctuated<GenericArgument, Token![,]>,
 }
 
+impl GroupArgs {
+    /// The parameters of `generics` that the group lists, in the
+    /// group's order.
+    ///
+    /// `#[group(FreeList<T>)] impl<'a, T: Slab>` -> `[T: Slab]`
+    fn impl_params<'g>(
+        &self,
+        generics: &'g Generics,
+    ) -> syn::Result<Vec<&'g GenericParam>> {
+        self.params
+            .iter()
+            .map(|arg| {
+                let param = arg.param_name().and_then(|name| {
+                    generics
+                        .params
+                        .iter()
+                        .find(|param| param.name() == name)
+                });
+                param.ok_or_else(|| {
+                    syn::Error::new_spanned(
+                        arg,
+                        "list a parameter of this impl by its name, such \
+                         as `#[group(FreeList<T>)]` for `impl<T>`",
+                    )
+                })
+            })
+            .collect()
+    }
+}
+
 impl Parse for GroupArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let name = input.parse()?;
@@ -339,6 +312,46 @@ impl ToTokens for GroupArgs {
         } else {
             quote!(#name<#params>)
         });
+    }
+}
+
+#[ext]
+impl ItemImpl {
+    /// `impl Testing<T> for (StateA, StateB)` -> `Testing<T>`
+    fn trait_path(&self) -> syn::Result<&Path> {
+        self.trait_
+            .as_ref()
+            .map(|(trait_path, _)| trait_path)
+            .ok_or_else(|| {
+                syn::Error::new_spanned(
+                    self,
+                    "use `#[group]` on a trait impl, such as `impl Meta \
+                     for (StateA, StateB)`",
+                )
+            })
+    }
+
+    /// `(StateA, StateB<T>) -> [StateA, StateB<T>]`
+    fn states(&self) -> syn::Result<Vec<&Type>> {
+        let Type::Tuple(tup) = self.self_ty.as_ref() else {
+            return Err(syn::Error::new_spanned(
+                &self.self_ty,
+                "implement the trait for a tuple of states, such as \
+                 `(StateA, StateB)`",
+            ));
+        };
+
+        tup.elems
+            .iter()
+            .map(|state| match state.peeled() {
+                Type::Path(_) => Ok(state),
+                _ => Err(syn::Error::new_spanned(
+                    state,
+                    "name each state with a type path, such as `(StateA, \
+                     StateB<T>)`",
+                )),
+            })
+            .collect()
     }
 }
 
@@ -388,8 +401,9 @@ impl TypeLayout {
             return Err(syn::Error::new_spanned(
                 ty,
                 format!(
-                    "remove `#[size({size})]` from `{assoc}`, and convert \
-                     with `morph`: its layout depends on `{param}`"
+                    "remove `#[size({size})]` from `{assoc}`, and \
+                     convert with `morph`: its layout depends on \
+                     `{param}`"
                 ),
             ));
         }

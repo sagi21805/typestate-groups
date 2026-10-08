@@ -48,7 +48,7 @@ impl Foo {
     fn method(&self) {}
 }
 
-// `#[group_impl]` already sets `Value` from the group.
+// `Numbers` sets `Value` to `u32`.
 #[group_impl(Numbers)]
 impl<S: Meta<Value = String>> Describe for Wrap<S> {
     fn describe(&self) -> String {
@@ -66,6 +66,7 @@ impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
     }
 }
 
+// Rejected even when it matches the group.
 #[group_impl(Words, state = S)]
 impl<S: Meta, I> Describe for Pair<S, I>
 where

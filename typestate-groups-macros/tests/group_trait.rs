@@ -130,24 +130,38 @@ fn generic_group_trait_keeps_lifetime_and_const_parameters() {
     assert_eq!(Repeat::<2>::repeat(&node, "hi"), ["hi", "hi"]);
 }
 
-#[group_trait(by = List)]
-trait Weigh {
-    fn weigh(&self) -> u32;
+/// Grouped by `Meta`, so `Word` sets `Value = u32`.
+#[group_trait(by = Meta)]
+trait Widen {
+    fn widen(&self) -> u64;
 }
 
-// `List` is the grouped trait, so a binding on `Meta` stays.
+#[group_impl(Word, state = S)]
+impl<T, S: Meta> Widen for Node<T, S> {
+    fn widen(&self) -> u64 {
+        u64::from(self.value)
+    }
+}
+
+/// Grouped by `List`, and reads the value through `Widen`, which the
+/// `Meta` groups implement.
+#[group_trait(by = List)]
+trait Weigh {
+    fn weigh(&self) -> u64;
+}
+
 #[group_impl(FreeList, state = S)]
-impl<T, S> Weigh for Node<T, S>
+impl<T, S: List + Meta> Weigh for Node<T, S>
 where
-    S: List + Meta<Value = u32>,
+    Self: Widen,
 {
-    fn weigh(&self) -> u32 {
-        self.value + 1
+    fn weigh(&self) -> u64 {
+        self.widen() + 1
     }
 }
 
 #[test]
-fn group_impl_keeps_bindings_on_other_state_types() {
+fn group_impl_reaches_another_trait_through_self_bound() {
     let node = Node::<(), FreeAttached> { value: 4, tag: () };
     assert_eq!(node.weigh(), 5);
 }
