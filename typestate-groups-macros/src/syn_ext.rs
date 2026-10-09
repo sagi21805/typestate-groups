@@ -1,5 +1,7 @@
 //! Project-agnostic extensions on `syn` and `proc_macro2` types.
 
+use core::mem;
+
 use extend::ext;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens, quote};
@@ -138,24 +140,32 @@ pub(crate) impl Generics {
         PathArguments::AngleBracketed(parse_quote!(<#(#args),*>))
     }
 
-    /// `S: Meta<Value = String>` -> `Value = String`
-    fn assoc_type_binding(&self, param: &Ident) -> Option<&AssocType> {
-        let inline = self
-            .type_params()
-            .filter(|tp| tp.ident == *param)
-            .flat_map(|tp| &tp.bounds);
+    /// Removes every `Assoc = Type` binding on a bound of `param` and
+    /// returns them.
+    ///
+    /// `S: Meta<Value = String> + Clone` -> `S: Meta + Clone`, returning
+    /// `[Value = String]`
+    fn take_assoc_type_bindings(
+        &mut self,
+        param: &Ident,
+    ) -> Vec<AssocType> {
+        let mut bindings = TakeAssocTypes::default();
+        for tp in self.type_params_mut().filter(|tp| tp.ident == *param) {
+            for bound in &mut tp.bounds {
+                bindings.visit_type_param_bound_mut(bound);
+            }
+        }
+
         let in_where = self
             .where_clause
-            .iter()
-            .flat_map(|clause| &clause.predicates)
-            .filter_map(|predicate| predicate.bounds_on(param))
+            .iter_mut()
+            .flat_map(|clause| &mut clause.predicates)
+            .filter_map(|predicate| predicate.bounds_on_mut(param))
             .flatten();
-
-        inline.chain(in_where).find_map(|bound| {
-            let mut first = FirstAssocType::default();
-            first.visit_type_param_bound(bound);
-            first.0
-        })
+        for bound in in_where {
+            bindings.visit_type_param_bound_mut(bound);
+        }
+        bindings.0
     }
 }
 
@@ -181,18 +191,24 @@ pub(crate) impl PathArguments {
     }
 }
 
-/// Keeps the first `Assoc = Type` binding it visits.
+/// Takes out the `Assoc = Type` bindings written directly on the bounds
+/// it visits, and none nested in their arguments.
 #[derive(Default)]
-struct FirstAssocType<'ast>(Option<&'ast AssocType>);
+struct TakeAssocTypes(Vec<AssocType>);
 
-impl<'ast> Visit<'ast> for FirstAssocType<'ast> {
-    fn visit_generic_argument(&mut self, arg: &'ast GenericArgument) {
-        if self.0.is_some() {
+impl VisitMut for TakeAssocTypes {
+    fn visit_path_arguments_mut(&mut self, arguments: &mut PathArguments) {
+        let PathArguments::AngleBracketed(angle) = arguments else {
             return;
+        };
+        for arg in mem::take(&mut angle.args) {
+            match arg {
+                GenericArgument::AssocType(assoc) => self.0.push(assoc),
+                arg => angle.args.push(arg),
+            }
         }
-        match arg {
-            GenericArgument::AssocType(assoc) => self.0 = Some(assoc),
-            _ => visit::visit_generic_argument(self, arg),
+        if angle.args.is_empty() {
+            *arguments = PathArguments::None;
         }
     }
 }
@@ -202,10 +218,10 @@ pub(crate) impl WherePredicate {
     /// This predicate's bounds when it bounds `param`.
     ///
     /// `S: Meta + Clone` -> `Meta + Clone`
-    fn bounds_on(
-        &self,
+    fn bounds_on_mut(
+        &mut self,
         param: &Ident,
-    ) -> Option<&Punctuated<TypeParamBound, Token![+]>> {
+    ) -> Option<&mut Punctuated<TypeParamBound, Token![+]>> {
         match self {
             WherePredicate::Type(PredicateType {
                 bounded_ty:

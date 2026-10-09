@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Ident, ItemImpl, PathSegment, Token,
+    AssocType, Ident, ItemImpl, PathSegment, Token,
     parse::{Parse, ParseStream},
     parse_quote,
 };
@@ -66,24 +66,16 @@ impl<'ast> GroupImpl<'ast> {
 
     /// `impl A<'a, X> for T -> impl __a_helper_mod::AHelper<'a, Group, X>
     /// for T where T::State: __a_helper_mod::Member<Group>`
-    pub fn create_group_impl(&self) -> syn::Result<TokenStream> {
+    ///
+    /// The group sets the state's associated types, so every `Assoc =
+    /// Type` binding on the state becomes an error. The impl is still
+    /// emitted without them, so its body keeps its types while the user
+    /// fixes it.
+    pub fn create_group_impl(&self) -> TokenStream {
         let group_name = self.group_name;
-
-        if let Some(binding) =
-            self.inner_impl.generics.assoc_type_binding(self.state)
-        {
-            return Err(syn::Error::new_spanned(
-                binding,
-                format!(
-                    "remove `{}`: `#[group_impl({group_name})]` already \
-                     sets `{}` to the type `{group_name}` declares",
-                    quote!(#binding),
-                    binding.ident,
-                ),
-            ));
-        }
-
         let mut modified = self.inner_impl.clone();
+        let bindings =
+            modified.generics.take_assoc_type_bindings(self.state);
 
         let (trait_path, _) = modified
             .trait_
@@ -119,7 +111,32 @@ impl<'ast> GroupImpl<'ast> {
             },
         );
 
-        Ok(quote!(#modified))
+        let binding_errors = bindings.iter().map(|binding| {
+            self.binding_error(binding).into_compile_error()
+        });
+
+        quote! {
+            #modified
+
+            #(#binding_errors)*
+        }
+    }
+
+    /// The error for a binding on the state, which the group already sets
+    /// or which belongs to a trait the impl isn't grouped by.
+    fn binding_error(&self, binding: &AssocType) -> syn::Error {
+        let group = self.group_name;
+
+        syn::Error::new_spanned(
+            binding,
+            format!(
+                "remove `{}`: `#[group_impl({group})]` takes the state's \
+                 types from `{group}`. To pin a type `{group}` doesn't \
+                 set, declare it on the trait `{group}` groups by, or \
+                 group this trait by the trait that declares it",
+                quote!(#binding),
+            ),
+        )
     }
 }
 
