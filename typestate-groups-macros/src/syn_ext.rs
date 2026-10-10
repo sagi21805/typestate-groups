@@ -1,16 +1,21 @@
 //! Project-agnostic extensions on `syn` and `proc_macro2` types.
 
+use core::mem;
+
 use extend::ext;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens, quote};
 use syn::{
-    AssocType, Attribute, GenericArgument, Generics, Ident, Path,
-    PredicateType, Token, Type, TypeParam, TypeParamBound, TypePath,
-    WherePredicate,
+    AssocType, Attribute, ConstParam, Expr, ExprPath, GenericArgument,
+    GenericParam, Generics, Ident, ImplItem, ImplItemConst, ImplItemFn,
+    Item, ItemImpl, LifetimeParam, Macro, Path, PathArguments,
+    PathSegment, PredicateType, Signature, Token, Type, TypeParam,
+    TypeParamBound, TypePath, WherePredicate,
     parse::{Parse, ParseStream},
+    parse_quote,
     punctuated::Punctuated,
     visit::{self, Visit},
-    visit_mut::VisitMut,
+    visit_mut::{self, VisitMut},
 };
 
 #[ext]
@@ -116,40 +121,180 @@ pub(crate) impl Generics {
         self.type_params_mut().find(|tp| tp.ident == *ident)
     }
 
-    /// `S: Meta<Value = String>` -> `Value = String`
-    fn assoc_type_binding(&self, param: &Ident) -> Option<&AssocType> {
-        let inline = self
-            .type_params()
-            .filter(|tp| tp.ident == *param)
-            .flat_map(|tp| &tp.bounds);
+    /// The arguments that name these generics.
+    ///
+    /// `<'a, T: Bound, const N: usize>` -> `<'a, T, N>`
+    fn to_arguments(&self) -> PathArguments {
+        if self.params.is_empty() {
+            return PathArguments::None;
+        }
+        let args = self.params.iter().map(|param| -> GenericArgument {
+            match param {
+                GenericParam::Lifetime(LifetimeParam {
+                    lifetime, ..
+                }) => GenericArgument::Lifetime(lifetime.clone()),
+                GenericParam::Type(TypeParam { ident, .. })
+                | GenericParam::Const(ConstParam { ident, .. }) => {
+                    parse_quote!(#ident)
+                }
+            }
+        });
+        PathArguments::AngleBracketed(parse_quote!(<#(#args),*>))
+    }
+
+    /// Removes every `Assoc = Type` binding on a bound of `param` and
+    /// returns them.
+    ///
+    /// `S: Meta<Value = String> + Clone` -> `S: Meta + Clone`, returning
+    /// `[Value = String]`
+    fn take_assoc_type_bindings(
+        &mut self,
+        param: &Ident,
+    ) -> Vec<AssocType> {
+        let mut bindings = TakeAssocTypes::default();
+        for tp in self.type_params_mut().filter(|tp| tp.ident == *param) {
+            for bound in &mut tp.bounds {
+                bindings.visit_type_param_bound_mut(bound);
+            }
+        }
+
         let in_where = self
             .where_clause
-            .iter()
-            .flat_map(|clause| &clause.predicates)
-            .filter_map(|predicate| predicate.bounds_on(param))
+            .iter_mut()
+            .flat_map(|clause| &mut clause.predicates)
+            .filter_map(|predicate| predicate.bounds_on_mut(param))
             .flatten();
-
-        inline.chain(in_where).find_map(|bound| {
-            let mut first = FirstAssocType::default();
-            first.visit_type_param_bound(bound);
-            first.0
-        })
+        for bound in in_where {
+            bindings.visit_type_param_bound_mut(bound);
+        }
+        bindings.0
     }
 }
 
-/// Keeps the first `Assoc = Type` binding it visits.
-#[derive(Default)]
-struct FirstAssocType<'ast>(Option<&'ast AssocType>);
+#[ext]
+pub(crate) impl PathArguments {
+    /// Inserts `arg` after the lifetimes.
+    ///
+    /// `<'a, T>`, `G` -> `<'a, G, T>`
+    fn insert_after_lifetimes(&mut self, arg: GenericArgument) {
+        if self.is_none() {
+            *self = PathArguments::AngleBracketed(parse_quote!(<>));
+        }
+        if let PathArguments::AngleBracketed(angle) = self {
+            let lifetimes = angle
+                .args
+                .iter()
+                .take_while(|arg| {
+                    matches!(arg, GenericArgument::Lifetime(_))
+                })
+                .count();
+            angle.args.insert(lifetimes, arg);
+        }
+    }
+}
 
-impl<'ast> Visit<'ast> for FirstAssocType<'ast> {
-    fn visit_generic_argument(&mut self, arg: &'ast GenericArgument) {
-        if self.0.is_some() {
+/// Takes out the `Assoc = Type` bindings written directly on the bounds
+/// it visits, and none nested in their arguments.
+#[derive(Default)]
+struct TakeAssocTypes(Vec<AssocType>);
+
+impl VisitMut for TakeAssocTypes {
+    fn visit_path_arguments_mut(&mut self, arguments: &mut PathArguments) {
+        let PathArguments::AngleBracketed(angle) = arguments else {
             return;
+        };
+        for arg in mem::take(&mut angle.args) {
+            match arg {
+                GenericArgument::AssocType(assoc) => self.0.push(assoc),
+                arg => angle.args.push(arg),
+            }
         }
-        match arg {
-            GenericArgument::AssocType(assoc) => self.0 = Some(assoc),
-            _ => visit::visit_generic_argument(self, arg),
+        if angle.args.is_empty() {
+            *arguments = PathArguments::None;
         }
+    }
+}
+
+#[ext]
+pub(crate) impl ItemImpl {
+    /// Qualifies each `Self::item` path to a const or fn this impl
+    /// defines with `trait_`.
+    ///
+    /// `Self::LIMIT` -> `<Self as Trait>::LIMIT`
+    fn qualify_self_paths(&mut self, trait_: &Path) {
+        let items = self
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ImplItem::Const(ImplItemConst { ident, .. })
+                | ImplItem::Fn(ImplItemFn {
+                    sig: Signature { ident, .. },
+                    ..
+                }) => Some(ident.clone()),
+                _ => None,
+            })
+            .collect();
+        let mut qualify = QualifySelfPaths { trait_, items };
+        for item in &mut self.items {
+            qualify.visit_impl_item_mut(item);
+        }
+    }
+}
+
+/// Qualifies the `Self::item` paths to `items` it visits with `trait_`,
+/// skipping nested items, where `Self` is another type. Reaches into
+/// macros whose arguments are comma-separated expressions, like
+/// `format!`.
+struct QualifySelfPaths<'a> {
+    trait_: &'a Path,
+    items: Vec<Ident>,
+}
+
+impl VisitMut for QualifySelfPaths<'_> {
+    fn visit_expr_path_mut(&mut self, expr: &mut ExprPath) {
+        match self.own_item(expr) {
+            Some(item) => {
+                let trait_ = self.trait_;
+                *expr = parse_quote!(<Self as #trait_>::#item);
+            }
+            None => visit_mut::visit_expr_path_mut(self, expr),
+        }
+    }
+
+    fn visit_macro_mut(&mut self, mac: &mut Macro) {
+        let Ok(mut args) = mac.parse_body_with(
+            Punctuated::<Expr, Token![,]>::parse_terminated,
+        ) else {
+            return;
+        };
+        for arg in &mut args {
+            self.visit_expr_mut(arg);
+        }
+        mac.tokens = args.to_token_stream();
+    }
+
+    /// Skips nested items. The default walks into them, but `Self` in a
+    /// nested item names another type, so its `Self::item` paths must
+    /// stay as written.
+    fn visit_item_mut(&mut self, _: &mut Item) {}
+}
+
+impl QualifySelfPaths<'_> {
+    /// The `item` segment of `expr` when it's `Self::item` and `item` is
+    /// one of `items`.
+    fn own_item(&self, expr: &ExprPath) -> Option<PathSegment> {
+        let ExprPath {
+            qself: None, path, ..
+        } = expr
+        else {
+            return None;
+        };
+        let [self_ty, item] = path.segments.iter().collect::<Vec<_>>()[..]
+        else {
+            return None;
+        };
+        (self_ty.ident == "Self" && self.items.contains(&item.ident))
+            .then(|| item.clone())
     }
 }
 
@@ -158,10 +303,10 @@ pub(crate) impl WherePredicate {
     /// This predicate's bounds when it bounds `param`.
     ///
     /// `S: Meta + Clone` -> `Meta + Clone`
-    fn bounds_on(
-        &self,
+    fn bounds_on_mut(
+        &mut self,
         param: &Ident,
-    ) -> Option<&Punctuated<TypeParamBound, Token![+]>> {
+    ) -> Option<&mut Punctuated<TypeParamBound, Token![+]>> {
         match self {
             WherePredicate::Type(PredicateType {
                 bounded_ty:

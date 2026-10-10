@@ -8,18 +8,6 @@ trait Meta {
 }
 
 #[group_trait(by = Meta)]
-trait AssocType {
-    type Extra;
-
-    fn a(&self) -> Self::Extra;
-}
-
-#[group_trait(by = Meta)]
-trait Generic<T> {
-    fn a(&self) -> T;
-}
-
-#[group_trait(by = Meta)]
 trait PatternArg {
     fn combine(&self, (x, y): (i32, i32)) -> i32;
 }
@@ -27,6 +15,13 @@ trait PatternArg {
 #[group_trait(by = Meta)]
 trait NoReceiver {
     fn make() -> Self;
+}
+
+#[group_trait(by = Meta)]
+trait DefaultConst {
+    const LIMIT: u32 = 10;
+
+    fn a(&self) -> u32;
 }
 
 fn main() {}

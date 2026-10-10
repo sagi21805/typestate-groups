@@ -104,7 +104,7 @@ pub fn group_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as GroupImplArgs);
 
     GroupImpl::new(&args, &item_impl)
-        .and_then(|group_impl| group_impl.create_group_impl())
+        .map(|group_impl| group_impl.create_group_impl())
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
@@ -190,6 +190,9 @@ pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Declares a trait each group implements with `#[group_impl]`.
+///
+/// The trait can declare methods, associated types and constants, and
+/// each group's impl sets its own.
 ///
 /// ```
 /// use typestate_groups::{
