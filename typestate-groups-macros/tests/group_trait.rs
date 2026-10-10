@@ -165,3 +165,69 @@ fn group_impl_reaches_another_trait_through_self_bound() {
     let node = Node::<(), FreeAttached> { value: 4, tag: () };
     assert_eq!(node.weigh(), 5);
 }
+
+/// Each `List` group sets its own types and constant.
+#[group_trait(by = List)]
+trait Measure {
+    type Unit;
+    type View<'a>
+    where
+        Self: 'a;
+    const SCALE: u32;
+
+    fn measure(&self) -> Self::Unit;
+    fn view(&self) -> Self::View<'_>;
+}
+
+#[group_impl(FreeList, state = S)]
+impl<T, S: Meta + List> Measure for Node<T, S> {
+    type Unit = u32;
+    type View<'a>
+        = &'a T
+    where
+        Self: 'a;
+
+    const SCALE: u32 = 2;
+
+    fn measure(&self) -> Self::Unit {
+        Self::SCALE
+    }
+
+    fn view(&self) -> Self::View<'_> {
+        &self.tag
+    }
+}
+
+#[group_impl(FullList, state = S)]
+impl<T: Clone, S: Meta + List> Measure for Node<T, S> {
+    type Unit = String;
+    type View<'a>
+        = Option<T>
+    where
+        Self: 'a;
+
+    const SCALE: u32 = 10;
+
+    fn measure(&self) -> String {
+        format!("full x{}", Self::SCALE)
+    }
+
+    fn view(&self) -> Option<T> {
+        Some(self.tag.clone())
+    }
+}
+
+#[test]
+fn group_trait_forwards_each_groups_types_and_constants() {
+    let free = Node::<char, FreeHead> { value: 0, tag: 'f' };
+    let unit: u32 = free.measure();
+    let view: &char = free.view();
+    assert_eq!((unit, *view), (2, 'f'));
+    assert_eq!(<Node<char, FreeHead> as Measure>::SCALE, 2);
+
+    let full = Node::<char, FullHead> { value: 0, tag: 'g' };
+    let unit: String = full.measure();
+    let view: Option<char> = full.view();
+    assert_eq!((unit.as_str(), view), ("full x10", Some('g')));
+    assert_eq!(<Node<char, FullHead> as Measure>::SCALE, 10);
+}

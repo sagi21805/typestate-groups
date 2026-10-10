@@ -1,13 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    AssocType, Ident, ItemImpl, PathSegment, Token,
+    AssocType, Ident, ItemImpl, Path, PathSegment, Token, WherePredicate,
     parse::{Parse, ParseStream},
     parse_quote,
 };
 
 use crate::syn_ext::{
-    GenericsExt as _, OptionExt as _, PathArgumentsExt as _,
+    GenericsExt as _, ItemImplExt as _, OptionExt as _,
+    PathArgumentsExt as _,
 };
 
 pub struct GroupImpl<'ast> {
@@ -64,61 +65,82 @@ impl<'ast> GroupImpl<'ast> {
         })
     }
 
-    /// `impl A<'a, X> for T -> impl __a_helper_mod::AHelper<'a, Group, X>
-    /// for T where T::State: __a_helper_mod::Member<Group>`
+    /// `impl A<'a, X> for T` -> `impl __a_helper_mod::AHelper<'a, Group,
+    /// X> for T where T::State: __a_helper_mod::Member<Group>`
     ///
     /// The group sets the state's associated types, so every `Assoc =
     /// Type` binding on the state becomes an error. The impl is still
     /// emitted without them, so its body keeps its types while the user
     /// fixes it.
+    ///
+    /// The blanket impl gives `Self` the trait's items too, so each
+    /// `Self::item` path to a const or fn the impl defines is qualified
+    /// with the helper trait.
     pub fn create_group_impl(&self) -> TokenStream {
-        let group_name = self.group_name;
-        let mut modified = self.inner_impl.clone();
+        let mut group_impl = self.inner_impl.clone();
         let bindings =
-            modified.generics.take_assoc_type_bindings(self.state);
+            group_impl.generics.take_assoc_type_bindings(self.state);
 
-        let (trait_path, _) = modified
+        let (trait_path, _) = group_impl
             .trait_
             .as_mut()
             .expect("`GroupImpl::new` accepts only trait impls");
-
-        let last = trait_path
-            .segments
-            .last_mut()
-            .expect("a parsed trait path has at least one segment");
-
-        let helper_mod_ident =
-            crate::naming::helper_mod_ident(&last.ident);
-        last.ident = crate::naming::helper_trait_ident(&last.ident);
-        last.arguments
-            .insert_after_lifetimes(parse_quote!(#group_name));
-
-        let mod_index = trait_path.segments.len() - 1;
-        trait_path
-            .segments
-            .insert(mod_index, PathSegment::from(helper_mod_ident));
-
-        let member_ident = crate::naming::helper_member_ident();
-        let mut member = trait_path.clone();
-        *member
-            .segments
-            .last_mut()
-            .expect("a parsed trait path has at least one segment") =
-            parse_quote!(#member_ident<#group_name>);
-        modified.generics.make_where_clause().predicates.push(
-            parse_quote! {
-                <Self as ::typestate_groups::WithState>::State: #member
-            },
-        );
+        let helper_trait = self.helper_trait_path(trait_path);
+        *trait_path = helper_trait.clone();
+        group_impl
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(self.member_bound(&helper_trait));
+        group_impl.qualify_self_paths(&helper_trait);
 
         let binding_errors = bindings.iter().map(|binding| {
             self.binding_error(binding).into_compile_error()
         });
 
         quote! {
-            #modified
+            #group_impl
 
             #(#binding_errors)*
+        }
+    }
+
+    /// `a::A<'a, X>` -> `a::__a_helper_mod::AHelper<'a, Group, X>`
+    fn helper_trait_path(&self, trait_path: &Path) -> Path {
+        let group = self.group_name;
+        let leading_colon = trait_path.leading_colon;
+        let mut segments = trait_path.segments.clone();
+        let PathSegment {
+            ident,
+            mut arguments,
+        } = segments
+            .pop()
+            .expect("a parsed trait path has at least one segment");
+
+        let helper_mod = crate::naming::helper_mod_ident(&ident);
+        let helper_trait = crate::naming::helper_trait_ident(&ident);
+        arguments.insert_after_lifetimes(parse_quote!(#group));
+        let prefix = segments.iter();
+
+        parse_quote! {
+            #leading_colon #(#prefix::)* #helper_mod::#helper_trait #arguments
+        }
+    }
+
+    /// `a::__a_helper_mod::AHelper<..>` -> `<Self as WithState>::State:
+    /// a::__a_helper_mod::Member<Group>`
+    fn member_bound(&self, helper_trait: &Path) -> WherePredicate {
+        let group = self.group_name;
+        let member_ident = crate::naming::helper_member_ident();
+        let mut member = helper_trait.clone();
+        *member
+            .segments
+            .last_mut()
+            .expect("a parsed trait path has at least one segment") =
+            parse_quote!(#member_ident<#group>);
+
+        parse_quote! {
+            <Self as ::typestate_groups::WithState>::State: #member
         }
     }
 

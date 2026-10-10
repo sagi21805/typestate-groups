@@ -191,6 +191,9 @@ pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Declares a trait each group implements with `#[group_impl]`.
 ///
+/// The trait can declare methods, associated types and constants, and
+/// each group's impl sets its own.
+///
 /// ```
 /// use typestate_groups::{
 ///     group, group_impl, group_trait, state, state_types, typestate,

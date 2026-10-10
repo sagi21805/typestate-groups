@@ -1,17 +1,17 @@
-error: remove this item: a `#[group_trait]` trait can hold only methods and constants with a value
-  --> tests/ui/group_trait.rs:12:5
-   |
-12 |     type Extra;
-   |     ^^^^^^^^^^^
-
 error: bind argument 1 of `combine` to a plain name, such as `value: T`: `#[group_trait]` forwards arguments by name
-  --> tests/ui/group_trait.rs:19:23
+  --> tests/ui/group_trait.rs:12:23
    |
-19 |     fn combine(&self, (x, y): (i32, i32)) -> i32;
+12 |     fn combine(&self, (x, y): (i32, i32)) -> i32;
    |                       ^^^^^^
 
 error: add a `self` receiver to `make`: every `#[group_trait]` method needs one
-  --> tests/ui/group_trait.rs:24:5
+  --> tests/ui/group_trait.rs:17:5
    |
-24 |     fn make() -> Self;
+17 |     fn make() -> Self;
    |     ^^^^^^^^^^^^^^^^^
+
+error: remove the default and set `LIMIT` in each `#[group_impl]`: `#[group_trait]` doesn't support default types and constants yet
+  --> tests/ui/group_trait.rs:22:5
+   |
+22 |     const LIMIT: u32 = 10;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
