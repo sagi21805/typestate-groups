@@ -82,7 +82,10 @@ impl<'ast> GroupTrait<'ast> {
     /// }
     /// ```
     pub fn generate_group_trait(&self) -> TokenStream {
-        let public_trait = self.public_trait();
+        let public_trait = PublicTrait {
+            item_trait: self.item_trait,
+            items: &self.items,
+        };
         let helper_mod = self.helper_mod();
         let blanket_impl = self.blanket_impl();
 
@@ -90,31 +93,6 @@ impl<'ast> GroupTrait<'ast> {
             #public_trait
             #helper_mod
             #blanket_impl
-        }
-    }
-
-    /// The trait with its method bodies removed.
-    fn public_trait(&self) -> TokenStream {
-        let ItemTrait {
-            attrs,
-            vis,
-            unsafety,
-            ident,
-            generics,
-            colon_token,
-            supertraits,
-            ..
-        } = self.item_trait;
-        let where_clause = &generics.where_clause;
-
-        let declarations =
-            self.items.iter().map(|item| Declaration { item });
-
-        quote! {
-            #(#attrs)*
-            #unsafety #vis trait #ident #generics #colon_token #supertraits #where_clause {
-                #(#declarations)*
-            }
         }
     }
 
@@ -213,6 +191,38 @@ impl<'ast> GroupTrait<'ast> {
             .predicates
             .extend(implementor_bounds);
         generics
+    }
+}
+
+/// The trait with its method bodies removed.
+struct PublicTrait<'a> {
+    item_trait: &'a ItemTrait,
+    items: &'a [GroupTraitItem<'a>],
+}
+
+impl ToTokens for PublicTrait<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ItemTrait {
+            attrs,
+            vis,
+            unsafety,
+            ident,
+            generics,
+            colon_token,
+            supertraits,
+            ..
+        } = self.item_trait;
+        let where_clause = &generics.where_clause;
+
+        let declarations =
+            self.items.iter().map(|item| Declaration { item });
+
+        tokens.extend(quote! {
+            #(#attrs)*
+            #unsafety #vis trait #ident #generics #colon_token #supertraits #where_clause {
+                #(#declarations)*
+            }
+        });
     }
 }
 
