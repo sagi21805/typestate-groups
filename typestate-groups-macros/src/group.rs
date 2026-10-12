@@ -1,6 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
-use syn::{Ident, ImplItem, ImplItemType, ItemImpl, LitInt, Type};
+use syn::{
+    Ident, ImplItem, ImplItemType, ItemImpl, LitInt, Type, parse_quote,
+};
 
 pub struct Group<'ast> {
     inner_impl: &'ast ItemImpl,
@@ -24,13 +26,13 @@ impl<'ast> Group<'ast> {
 
         let items = &self.inner_impl.items;
         let layouts = self.layouts()?;
-        let size_asserts = layouts.iter().map(|layout| &layout.assert);
-        let layout_items = layouts.iter().map(|layout| &layout.item);
+        let size_asserts =
+            layouts.iter().map(|layout| &layout.size_assert);
 
         let stripped_items =
             items.iter().map(|item| StrippedItem { item });
         let items_tokens = quote! { #(#stripped_items)* };
-        let layout_tokens = quote! { #(#layout_items)* };
+        let layout_tokens = quote! { #(#layouts)* };
         let types = items
             .iter()
             .filter(|item| matches!(item, ImplItem::Type(_)))
@@ -122,12 +124,11 @@ impl<'ast> Group<'ast> {
     }
 }
 
-/// An associated type's layout item and size assertion.
+/// An associated type's layout item.
 ///
 /// ```ignore
 /// #[size(4)] type Value = u32;
 /// // ->
-/// const _: () = assert!(size_of::<u32>() == 4, ..);
 /// type __TypestateGroupsLayoutValue = PinnedTypeLayout<G, u32, 4, { align_of::<u32>() }>;
 ///
 /// type Value = String;
@@ -135,35 +136,52 @@ impl<'ast> Group<'ast> {
 /// type __TypestateGroupsLayoutValue = UnpinnedTypeLayout<G, String>;
 /// ```
 struct TypeLayout<'a> {
-    item: TokenStream,
-    assert: Option<SizeAssert<'a>>,
+    impl_ty: &'a ImplItemType,
+    group: &'a Ident,
+    /// The assertion `#[size(N)]` adds, if present.
+    size_assert: Option<SizeAssert<'a>>,
 }
 
 impl<'a> TypeLayout<'a> {
-    fn new(impl_ty: &'a ImplItemType, group: &Ident) -> syn::Result<Self> {
-        let layout = crate::naming::layout_assoc_ident(&impl_ty.ident);
+    /// Reads `#[size(N)]` when the type has attributes.
+    fn new(
+        impl_ty: &'a ImplItemType,
+        group: &'a Ident,
+    ) -> syn::Result<Self> {
+        let size_assert = if impl_ty.attrs.is_empty() {
+            None
+        } else {
+            Some(SizeAssert::try_from(impl_ty)?)
+        };
 
-        if impl_ty.attrs.is_empty() {
-            let ty = &impl_ty.ty;
-            return Ok(TypeLayout {
-                item: quote! {
-                    type #layout = ::typestate_groups::UnpinnedTypeLayout<#group, #ty>;
-                },
-                assert: None,
-            });
-        }
-
-        let assert = SizeAssert::try_from(impl_ty)?;
-        let size = &assert.size;
-        let ty = &impl_ty.ty;
         Ok(TypeLayout {
-            item: quote! {
-                type #layout = ::typestate_groups::PinnedTypeLayout<
-                    #group, #ty, #size, { ::core::mem::align_of::<#ty>() }
-                >;
-            },
-            assert: Some(assert),
+            impl_ty,
+            group,
+            size_assert,
         })
+    }
+}
+
+impl ToTokens for TypeLayout<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let TypeLayout {
+            impl_ty: ImplItemType { ident, ty, .. },
+            group,
+            size_assert,
+        } = self;
+        let layout = crate::naming::layout_assoc_ident(ident);
+        let layout_ty: Type = match size_assert {
+            None => parse_quote! {
+                ::typestate_groups::UnpinnedTypeLayout<#group, #ty>
+            },
+            Some(SizeAssert { size, .. }) => parse_quote! {
+                ::typestate_groups::PinnedTypeLayout<
+                    #group, #ty, #size, { ::core::mem::align_of::<#ty>() }
+                >
+            },
+        };
+
+        tokens.extend(quote!(type #layout = #layout_ty;));
     }
 }
 
