@@ -86,61 +86,16 @@ impl<'ast> GroupTrait<'ast> {
             item_trait: self.item_trait,
             items: &self.items,
         };
-        let helper_mod = self.helper_mod();
+        let helper_mod = HelperMod {
+            item_trait: self.item_trait,
+            state_types: &self.args.ty.path,
+        };
         let blanket_impl = self.blanket_impl();
 
         quote! {
             #public_trait
             #helper_mod
             #blanket_impl
-        }
-    }
-
-    /// The helper trait, with the group as its first type parameter, and
-    /// `Member`, which every state in the group implements.
-    fn helper_mod(&self) -> TokenStream {
-        let ItemTrait {
-            attrs,
-            vis,
-            ident,
-            generics,
-            colon_token,
-            supertraits,
-            items,
-            ..
-        } = self.item_trait;
-        let where_clause = &generics.where_clause;
-        let helper_ident = crate::naming::helper_trait_ident(ident);
-        let helper_mod_ident = crate::naming::helper_mod_ident(ident);
-        let member_ident = crate::naming::helper_member_ident();
-        let group = crate::naming::group_param_ident();
-
-        let state_types = &self.args.ty.path;
-        let marker_trait =
-            state_types.with_last_ident(crate::naming::group_marker_ident);
-        let member_trait =
-            state_types.with_last_ident(crate::naming::group_member_ident);
-
-        let mut helper_generics = generics.clone();
-        helper_generics.params.insert(
-            generics.lifetimes().count(),
-            parse_quote!(#group: #marker_trait),
-        );
-
-        quote! {
-            #[doc(hidden)]
-            #vis mod #helper_mod_ident {
-                use super::*;
-
-                #(#attrs)*
-                pub trait #helper_ident #helper_generics #colon_token #supertraits #where_clause {
-                    #(#items)*
-                }
-
-                pub trait #member_ident<#group: #marker_trait>: #member_trait<#group> {}
-
-                impl<#group: #marker_trait, T: #member_trait<#group>> #member_ident<#group> for T {}
-            }
         }
     }
 
@@ -221,6 +176,61 @@ impl ToTokens for PublicTrait<'_> {
             #(#attrs)*
             #unsafety #vis trait #ident #generics #colon_token #supertraits #where_clause {
                 #(#declarations)*
+            }
+        });
+    }
+}
+
+/// The helper trait, with the group as its first type parameter, and
+/// `Member`, which every state in the group implements.
+struct HelperMod<'a> {
+    item_trait: &'a ItemTrait,
+    state_types: &'a Path,
+}
+
+impl ToTokens for HelperMod<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ItemTrait {
+            attrs,
+            vis,
+            ident,
+            generics,
+            colon_token,
+            supertraits,
+            items,
+            ..
+        } = self.item_trait;
+        let where_clause = &generics.where_clause;
+        let helper_ident = crate::naming::helper_trait_ident(ident);
+        let helper_mod_ident = crate::naming::helper_mod_ident(ident);
+        let member_ident = crate::naming::helper_member_ident();
+        let group = crate::naming::group_param_ident();
+
+        let state_types = self.state_types;
+        let marker_trait =
+            state_types.with_last_ident(crate::naming::group_marker_ident);
+        let member_trait =
+            state_types.with_last_ident(crate::naming::group_member_ident);
+
+        let mut helper_generics = generics.clone();
+        helper_generics.params.insert(
+            generics.lifetimes().count(),
+            parse_quote!(#group: #marker_trait),
+        );
+
+        tokens.extend(quote! {
+            #[doc(hidden)]
+            #vis mod #helper_mod_ident {
+                use super::*;
+
+                #(#attrs)*
+                pub trait #helper_ident #helper_generics #colon_token #supertraits #where_clause {
+                    #(#items)*
+                }
+
+                pub trait #member_ident<#group: #marker_trait>: #member_trait<#group> {}
+
+                impl<#group: #marker_trait, T: #member_trait<#group>> #member_ident<#group> for T {}
             }
         });
     }
