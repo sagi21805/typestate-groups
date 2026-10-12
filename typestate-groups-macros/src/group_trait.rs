@@ -14,8 +14,9 @@ use crate::syn_ext::{
 };
 
 pub struct GroupTrait<'ast> {
-    args: &'ast GroupTraitArgs,
     item_trait: &'ast ItemTrait,
+    /// `Meta` in `#[group_trait(by = Meta)]`.
+    state_types: &'ast TypePath,
     /// `__a_helper_mod::AHelper<'a, <<I as WithState>::State as
     /// Trait>::Marker, T>`
     helper_bound: Path,
@@ -47,15 +48,17 @@ impl<'ast> GroupTrait<'ast> {
             .collect::<syn::Result<_>>()?;
 
         Ok(GroupTrait {
-            args,
             item_trait,
+            state_types,
             helper_bound: parse_quote!(
                 #helper_mod_ident::#helper_ident #helper_args
             ),
             items,
         })
     }
+}
 
+impl ToTokens for GroupTrait<'_> {
     /// The trait, its helper module, and a blanket impl forwarding to the
     /// helper impl of the state's group.
     ///
@@ -81,27 +84,27 @@ impl<'ast> GroupTrait<'ast> {
     ///     fn describe(&self) -> T { <I as DescribeHelper<..>>::describe(self) }
     /// }
     /// ```
-    pub fn generate_group_trait(&self) -> TokenStream {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let public_trait = PublicTrait {
             item_trait: self.item_trait,
             items: &self.items,
         };
         let helper_mod = HelperMod {
             item_trait: self.item_trait,
-            state_types: &self.args.ty.path,
+            state_types: &self.state_types.path,
         };
         let blanket_impl = BlanketImpl {
             item_trait: self.item_trait,
-            state_types: &self.args.ty,
+            state_types: self.state_types,
             helper_bound: &self.helper_bound,
             items: &self.items,
         };
 
-        quote! {
+        tokens.extend(quote! {
             #public_trait
             #helper_mod
             #blanket_impl
-        }
+        });
     }
 }
 

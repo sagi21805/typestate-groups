@@ -256,7 +256,7 @@ pub fn group_trait(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as GroupTraitArgs);
 
     GroupTrait::new(&args, &item_trait)
-        .map(|group_trait| group_trait.generate_group_trait())
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
