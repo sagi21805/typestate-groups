@@ -21,7 +21,7 @@ impl TypeState {
         let target_state = &self.target_state.ident;
         let (_, ty_generics, _) =
             self.item_struct.generics.split_for_impl();
-        let pointee_check = self.pointee_check();
+        let pointee_check = PointeeCheck { typestate: self };
 
         CastBy::ALL
             .into_iter()
@@ -100,18 +100,28 @@ impl TypeState {
             }
         }
     }
+}
 
-    /// `CastableState::POINTEE_CHECK`, asserting that each indirect
-    /// field's pointee keeps its size and alignment.
-    fn pointee_check(&self) -> TokenStream {
-        let asserts = self
-            .item_struct
+/// `CastableState::POINTEE_CHECK`, asserting that each indirect
+/// field's pointee keeps its size and alignment.
+struct PointeeCheck<'a> {
+    typestate: &'a TypeState,
+}
+
+impl ToTokens for PointeeCheck<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let TypeState {
+            item_struct,
+            shapes,
+            ..
+        } = self.typestate;
+        let asserts = item_struct
             .fields
             .members()
-            .zip(&self.shapes)
+            .zip(shapes)
             .filter_map(|(member, shape)| match shape {
                 FieldShape::Indirect(src) => {
-                    let dst = self.in_target_state(src);
+                    let dst = self.typestate.in_target_state(src);
                     let msg = format!(
                         "make the pointee of `{}` keep its size and \
                          alignment in the target state, or convert with \
@@ -131,11 +141,11 @@ impl TypeState {
                 FieldShape::Fixed | FieldShape::Projection(_) => None,
             });
 
-        quote! {
+        tokens.extend(quote! {
             const POINTEE_CHECK: () = {
                 #(#asserts)*
             };
-        }
+        });
     }
 }
 
