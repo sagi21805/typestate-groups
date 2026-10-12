@@ -1,6 +1,6 @@
 use extend::ext;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{
     FnArg, GenericParam, Generics, Ident, ItemTrait, Pat, PatIdent,
     PatType, Path, Signature, Token, TraitItem, TraitItemConst,
@@ -261,11 +261,27 @@ impl<'ast> GroupTrait<'ast> {
     }
 
     /// `item` -> `<I as AHelper<..>>::item`
-    fn helper_item(&self, item: &Ident) -> TokenStream {
-        let implementor = crate::naming::implementor_ident();
-        let helper_bound = &self.helper_bound;
+    fn helper_item<'a>(&'a self, item: &'a Ident) -> HelperItem<'a> {
+        HelperItem {
+            helper_bound: &self.helper_bound,
+            item,
+        }
+    }
+}
 
-        quote!(<#implementor as #helper_bound>::#item)
+/// `<I as AHelper<..>>::item`, a trait item reached through the helper
+/// trait.
+struct HelperItem<'a> {
+    helper_bound: &'a Path,
+    item: &'a Ident,
+}
+
+impl ToTokens for HelperItem<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let implementor = crate::naming::implementor_ident();
+        let HelperItem { helper_bound, item } = self;
+
+        tokens.extend(quote!(<#implementor as #helper_bound>::#item));
     }
 }
 
