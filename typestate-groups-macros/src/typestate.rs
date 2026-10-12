@@ -17,6 +17,7 @@ use self::{
     args::Transmute,
     fields::{FieldExt as _, FieldShape},
     item_struct::ItemStructExt as _,
+    transmute::TransmutableStateImpl,
 };
 use crate::syn_ext::TypeExt as _;
 
@@ -105,8 +106,10 @@ impl TypeState {
         let restate_impl = RestateImpl { typestate: self };
         let transmute_impls = match &self.transmute {
             Transmute::On(align) => {
-                let transmutable_state_impl =
-                    self.transmutable_state_impl(align);
+                let transmutable_state_impl = TransmutableStateImpl {
+                    typestate: self,
+                    align,
+                };
                 let castable_state_impls = self.castable_state_impls();
                 Some(quote! {
                     #transmutable_state_impl
