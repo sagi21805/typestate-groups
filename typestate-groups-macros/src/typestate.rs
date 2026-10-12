@@ -102,7 +102,7 @@ impl TypeState {
     pub(crate) fn generate_typestate_impls(&self) -> TokenStream {
         let item_struct = &self.item_struct;
         let with_state_impl = WithStateImpl { typestate: self };
-        let restate_impl = self.restate_impl();
+        let restate_impl = RestateImpl { typestate: self };
         let transmute_impls = match &self.transmute {
             Transmute::On(align) => {
                 let transmutable_state_impl =
@@ -125,25 +125,6 @@ impl TypeState {
             #restate_impl
 
             #transmute_impls
-        }
-    }
-
-    /// `Restate<S2>` for `Struct<S>`, for every `S2`.
-    fn restate_impl(&self) -> TokenStream {
-        let struct_ident = &self.item_struct.ident;
-        let target_state = &self.target_state.ident;
-        let target_ty = &self.target_ty;
-        let (_, ty_generics, _) =
-            self.item_struct.generics.split_for_impl();
-        let (impl_generics, _, where_clause) =
-            self.target_generics.split_for_impl();
-
-        quote! {
-            impl #impl_generics ::typestate_groups::Restate<#target_state>
-                for #struct_ident #ty_generics #where_clause
-            {
-                type Target = #target_ty;
-            }
         }
     }
 
@@ -172,6 +153,36 @@ impl ToTokens for WithStateImpl<'_> {
         tokens.extend(quote! {
             impl #impl_generics ::typestate_groups::WithState for #struct_ident #ty_generics #where_clause {
                 type State = #state;
+            }
+        });
+    }
+}
+
+/// `Restate<S2>` for `Struct<S>`, for every `S2`.
+struct RestateImpl<'a> {
+    typestate: &'a TypeState,
+}
+
+impl ToTokens for RestateImpl<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let TypeState {
+            item_struct,
+            target_state,
+            target_ty,
+            target_generics,
+            ..
+        } = self.typestate;
+        let struct_ident = &item_struct.ident;
+        let target_state = &target_state.ident;
+        let (_, ty_generics, _) = item_struct.generics.split_for_impl();
+        let (impl_generics, _, where_clause) =
+            target_generics.split_for_impl();
+
+        tokens.extend(quote! {
+            impl #impl_generics ::typestate_groups::Restate<#target_state>
+                for #struct_ident #ty_generics #where_clause
+            {
+                type Target = #target_ty;
             }
         });
     }
