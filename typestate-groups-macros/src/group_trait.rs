@@ -107,15 +107,8 @@ impl<'ast> GroupTrait<'ast> {
         } = self.item_trait;
         let where_clause = &generics.where_clause;
 
-        let declarations = self.items.iter().map(|item| match item {
-            GroupTraitItem::Fn {
-                method: TraitItemFn { attrs, sig, .. },
-                ..
-            } => quote!(#(#attrs)* #sig;),
-            GroupTraitItem::Type(ty) => quote!(#ty),
-            GroupTraitItem::Const(constant) => quote!(#constant),
-            GroupTraitItem::Other(item) => quote!(#item),
-        });
+        let declarations =
+            self.items.iter().map(|item| Declaration { item });
 
         quote! {
             #(#attrs)*
@@ -365,6 +358,26 @@ impl<'a> TryFrom<&'a TraitItem> for GroupTraitItem<'a> {
                 Ok(GroupTraitItem::Const(constant))
             }
             other => Ok(GroupTraitItem::Other(other)),
+        }
+    }
+}
+
+/// An item as the public trait declares it, with a method's body
+/// removed.
+struct Declaration<'a> {
+    item: &'a GroupTraitItem<'a>,
+}
+
+impl ToTokens for Declaration<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.item {
+            GroupTraitItem::Fn {
+                method: TraitItemFn { attrs, sig, .. },
+                ..
+            } => tokens.extend(quote!(#(#attrs)* #sig;)),
+            GroupTraitItem::Type(ty) => ty.to_tokens(tokens),
+            GroupTraitItem::Const(constant) => constant.to_tokens(tokens),
+            GroupTraitItem::Other(item) => item.to_tokens(tokens),
         }
     }
 }
