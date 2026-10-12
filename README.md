@@ -93,6 +93,10 @@ group with `#[group_impl(Group)]`. Every state in the group gets the
 impl, so adding a state to `(Sampled, Filtered)` gives it `report()` with
 no new code.
 
+The trait can take type, lifetime and const parameters. Each group impl
+names them as in any trait impl, for example
+`#[group_impl(Counts, state = S)] impl<S: Stage, T> Scale<T> for Frame<S>`.
+
 Plain Rust rejects this pair with `E0119: conflicting implementations`,
 because coherence ignores associated types:
 

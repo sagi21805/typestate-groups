@@ -1,37 +1,37 @@
 error: use `#[group_impl]` on a trait impl, such as `impl Trait for Wrap<S>`
-  --> tests/ui/group_impl.rs:39:1
+  --> tests/ui/group_impl.rs:47:1
    |
-39 | / impl Foo {
-40 | |     fn method(&self) {}
-41 | | }
+47 | / impl Foo {
+48 | |     fn method(&self) {}
+49 | | }
    | |_^
 
-error: remove `Value = String`: `#[group_impl(Numbers)]` already sets `Value` to the type `Numbers` declares
-  --> tests/ui/group_impl.rs:45:14
+error: remove `Value = String`: `#[group_impl(Numbers)]` takes the state's types from `Numbers`. To pin a type `Numbers` doesn't set, declare it on the trait `Numbers` groups by, or group this trait by the trait that declares it
+  --> tests/ui/group_impl.rs:53:14
    |
-45 | impl<S: Meta<Value = String>> Describe for Wrap<S> {
+53 | impl<S: Meta<Value = String>> Describe for Wrap<S> {
    |              ^^^^^^^^^^^^^^
 
-error: remove `Value = String`: `#[group_impl(Numbers)]` already sets `Value` to the type `Numbers` declares
-  --> tests/ui/group_impl.rs:53:39
+error: remove `Value = String`: `#[group_impl(Numbers)]` takes the state's types from `Numbers`. To pin a type `Numbers` doesn't set, declare it on the trait `Numbers` groups by, or group this trait by the trait that declares it
+  --> tests/ui/group_impl.rs:61:39
    |
-53 | impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
+61 | impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
    |                                       ^^^^^^^^^^^^^^
 
-error: remove `Value = String`: `#[group_impl(Numbers)]` already sets `Value` to the type `Numbers` declares
-  --> tests/ui/group_impl.rs:65:13
+error: remove `Value = String`: `#[group_impl(Words)]` takes the state's types from `Words`. To pin a type `Words` doesn't set, declare it on the trait `Words` groups by, or group this trait by the trait that declares it
+  --> tests/ui/group_impl.rs:74:13
    |
-65 |     S: Meta<Value = String>,
+74 |     S: Meta<Value = String>,
    |             ^^^^^^^^^^^^^^
 
 error: add `state = <Ident>` to `#[group_impl]` to name the state parameter; only an impl with one generic type parameter can leave it out
-  --> tests/ui/group_impl.rs:73:5
+  --> tests/ui/group_impl.rs:82:5
    |
-73 | impl<S: Meta, I> Describe for Pair<S, I> {
+82 | impl<S: Meta, I> Describe for Pair<S, I> {
    |     ^^^^^^^^^^^^
 
 error: set `state` to one of the impl's generic type parameters
-  --> tests/ui/group_impl.rs:79:31
+  --> tests/ui/group_impl.rs:88:31
    |
-79 | #[group_impl(Numbers, state = T)]
+88 | #[group_impl(Numbers, state = T)]
    |                               ^

@@ -1,0 +1,46 @@
+error[E0107]: trait takes 2 generic arguments but 1 generic argument was supplied
+  --> tests/ui/group_trait_generic.rs:39:15
+   |
+38 | #[group_impl(Numbers)]
+   |              ------- supplied 1 generic argument
+39 | impl<S: Meta> Scale for Wrap<S> {
+   |               ^^^^^ expected 2 generic arguments
+   |
+note: trait defined here, with 2 generic parameters: `__TypestateGroupsGroup`, `F`
+  --> tests/ui/group_trait_generic.rs:33:7
+   |
+32 | #[group_trait(by = Meta)]
+   | -------------------------
+33 | trait Scale<F> {
+   |       ^^^^^ -
+help: add missing generic argument
+   |
+38 | #[group_impl(Numbers, F)]
+   |                     +++
+
+error[E0599]: the method `describe` exists for struct `Wrap<Big>`, but its trait bounds were not satisfied
+  --> tests/ui/group_trait_generic.rs:62:9
+   |
+28 | struct Wrap<S: Meta> {
+   | -------------------- method `describe` not found for this struct because it doesn't satisfy `Wrap<Big>: Describe<_>` or `Wrap<Big>: DescribeHelper<Words, _>`
+...
+62 |     big.describe("word");
+   |         ^^^^^^^^ method cannot be called on `Wrap<Big>` due to unsatisfied trait bounds
+   |
+note: trait bound `Wrap<Big>: DescribeHelper<Words, _>` was not satisfied
+  --> tests/ui/group_trait_generic.rs:45:1
+   |
+45 | #[group_trait(by = Meta)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+46 | trait Describe<F> {
+   |       ^^^^^^^^^^^
+note: the trait `DescribeHelper` must be implemented
+  --> tests/ui/group_trait_generic.rs:45:1
+   |
+45 | #[group_trait(by = Meta)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following traits define an item `describe`, perhaps you need to implement one of them:
+           candidate #1: `Describe`
+           candidate #2: `DescribeHelper`
+   = note: this error originates in the attribute macro `group_trait` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -43,7 +43,7 @@ struct Wrap<S: Meta> {
 
 #[group_trait(by = Meta)]
 trait describe {
-    const LIMIT: u32 = 10;
+    const LIMIT: u32;
 
     fn sum(&self, x: u32, y: u32) -> String;
 
@@ -73,6 +73,8 @@ impl<S: Meta> describe for Wrap<S> {
 
 #[group_impl(Words)]
 impl<S: Meta + State> describe for Wrap<S> {
+    const LIMIT: u32 = 10;
+
     fn sum(&self, x: u32, y: u32) -> String {
         format!("{}{}{x}{y}", self.value.to_uppercase(), self.extra)
     }
@@ -96,12 +98,9 @@ fn group_impl_dispatches_to_the_states_group() {
 }
 
 #[test]
-fn group_impl_consts_dont_reach_the_trait() {
-    assert_eq!(<Wrap<A> as describe>::LIMIT, 10);
-    assert_eq!(
-        <Wrap<A> as __describe_helper_mod::describeHelper<Numbers>>::LIMIT,
-        42
-    );
+fn group_impl_consts_reach_the_trait() {
+    assert_eq!(<Wrap<A> as describe>::LIMIT, 42);
+    assert_eq!(<Wrap<C> as describe>::LIMIT, 10);
 }
 
 #[typestate(state = S)]
