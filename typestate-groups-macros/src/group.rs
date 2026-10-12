@@ -108,7 +108,7 @@ impl<'ast> Group<'ast> {
     }
 
     /// The layout of every associated type.
-    fn layouts(&self) -> syn::Result<Vec<TypeLayout>> {
+    fn layouts(&self) -> syn::Result<Vec<TypeLayout<'ast>>> {
         self.inner_impl
             .items
             .iter()
@@ -134,13 +134,13 @@ impl<'ast> Group<'ast> {
 /// // ->
 /// type __TypestateGroupsLayoutValue = UnpinnedTypeLayout<G, String>;
 /// ```
-struct TypeLayout {
+struct TypeLayout<'a> {
     item: TokenStream,
-    assert: Option<TokenStream>,
+    assert: Option<SizeAssert<'a>>,
 }
 
-impl TypeLayout {
-    fn new(impl_ty: &ImplItemType, group: &Ident) -> syn::Result<Self> {
+impl<'a> TypeLayout<'a> {
+    fn new(impl_ty: &'a ImplItemType, group: &Ident) -> syn::Result<Self> {
         let layout = crate::naming::layout_assoc_ident(&impl_ty.ident);
 
         if impl_ty.attrs.is_empty() {
@@ -153,8 +153,9 @@ impl TypeLayout {
             });
         }
 
-        let SizeAssert { assert, size, ty } =
-            SizeAssert::try_from(impl_ty)?;
+        let assert = SizeAssert::try_from(impl_ty)?;
+        let size = &assert.size;
+        let ty = &impl_ty.ty;
         Ok(TypeLayout {
             item: quote! {
                 type #layout = ::typestate_groups::PinnedTypeLayout<
@@ -166,11 +167,11 @@ impl TypeLayout {
     }
 }
 
-/// A compile-time assertion read from `#[size(N)]`.
-pub struct SizeAssert<'a> {
-    pub assert: TokenStream,
-    pub size: LitInt,
-    pub ty: &'a Type,
+/// `const _: () = assert!(size_of::<u32>() == 4, ..);`, read from
+/// `#[size(4)] type Value = u32;`.
+struct SizeAssert<'a> {
+    impl_ty: &'a ImplItemType,
+    size: LitInt,
 }
 
 impl<'a> TryFrom<&'a ImplItemType> for SizeAssert<'a> {
@@ -200,21 +201,27 @@ impl<'a> TryFrom<&'a ImplItemType> for SizeAssert<'a> {
             ));
         }
 
-        let size: LitInt = attr.parse_args()?;
+        Ok(SizeAssert {
+            impl_ty,
+            size: attr.parse_args()?,
+        })
+    }
+}
 
-        let ty = &impl_ty.ty;
+impl ToTokens for SizeAssert<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let SizeAssert {
+            impl_ty: ImplItemType { ident, ty, .. },
+            size,
+        } = self;
         let msg = format!(
             "change `#[size({size})]` on `{ident}` to the size of `{}`",
             quote!(#ty),
         );
 
-        Ok(SizeAssert {
-            assert: quote! {
-                const _: () = assert!(::core::mem::size_of::<#ty>() == #size, #msg);
-            },
-            size,
-            ty,
-        })
+        tokens.extend(quote! {
+            const _: () = assert!(::core::mem::size_of::<#ty>() == #size, #msg);
+        });
     }
 }
 
