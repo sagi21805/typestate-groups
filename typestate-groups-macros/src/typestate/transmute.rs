@@ -1,7 +1,7 @@
 //! The `TransmutableState` impl `unsafe_transmute = true` derives.
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{
     Ident, Type, WherePredicate, parse_quote, parse_quote_spanned,
     spanned::Spanned as _,
@@ -37,7 +37,7 @@ impl TypeState {
             },
         ));
         let (impl_generics, _, where_clause) = generics.split_for_impl();
-        let layout_check = self.layout_check();
+        let layout_check = LayoutCheck { typestate: self };
 
         quote! {
             // SAFETY: the where-clause gives every projection one size
@@ -71,52 +71,6 @@ impl TypeState {
         })
     }
 
-    /// `TransmutableState::LAYOUT_CHECK`, extended with one offset
-    /// assertion per field.
-    ///
-    /// `align = N` pins the container's alignment but not its fields', so
-    /// a field after a projection can sit at another offset in the
-    /// target state.
-    fn layout_check(&self) -> TokenStream {
-        let struct_ident = &self.item_struct.ident;
-        let target_ty = &self.target_ty;
-        let align_msg = format!(
-            "raise `align = N` on `{struct_ident}` to at least the \
-             largest alignment among its states"
-        );
-        let offset_asserts = self.item_struct.fields.members().map(|member| {
-            let msg = format!(
-                "move field `{}` to the start of `{struct_ident}`, or \
-                 transmute only between states whose types share an \
-                 alignment: its offset differs in the target state",
-                quote!(#member),
-            );
-            quote! {
-                ::core::assert!(
-                    ::core::mem::offset_of!(Self, #member)
-                        == ::core::mem::offset_of!(#target_ty, #member),
-                    #msg
-                );
-            }
-        });
-
-        quote! {
-            const LAYOUT_CHECK: () = {
-                ::core::assert!(
-                    ::core::mem::align_of::<Self>()
-                        == ::core::mem::align_of::<#target_ty>(),
-                    #align_msg
-                );
-                #(#offset_asserts)*
-                ::core::assert!(
-                    ::core::mem::size_of::<Self>()
-                        == ::core::mem::size_of::<#target_ty>(),
-                    "`Self` and `Target` must have the same size"
-                );
-            };
-        }
-    }
-
     /// `S2::__TypestateGroupsLayoutP:
     /// SameLayout<S::__TypestateGroupsLayoutP>`, or only `SameSize`
     /// under `align = N`.
@@ -138,5 +92,61 @@ impl TypeState {
                     ::typestate_groups::SameSize<<#state::#layout as ::typestate_groups::TypeLayout>::Size>
             },
         }
+    }
+}
+
+/// `TransmutableState::LAYOUT_CHECK`, extended with one offset
+/// assertion per field.
+///
+/// `align = N` pins the container's alignment but not its fields', so
+/// a field after a projection can sit at another offset in the
+/// target state.
+struct LayoutCheck<'a> {
+    typestate: &'a TypeState,
+}
+
+impl ToTokens for LayoutCheck<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let TypeState {
+            item_struct,
+            target_ty,
+            ..
+        } = self.typestate;
+        let struct_ident = &item_struct.ident;
+        let align_msg = format!(
+            "raise `align = N` on `{struct_ident}` to at least the \
+             largest alignment among its states"
+        );
+        let offset_asserts = item_struct.fields.members().map(|member| {
+            let msg = format!(
+                "move field `{}` to the start of `{struct_ident}`, or \
+                 transmute only between states whose types share an \
+                 alignment: its offset differs in the target state",
+                quote!(#member),
+            );
+            quote! {
+                ::core::assert!(
+                    ::core::mem::offset_of!(Self, #member)
+                        == ::core::mem::offset_of!(#target_ty, #member),
+                    #msg
+                );
+            }
+        });
+
+        tokens.extend(quote! {
+            const LAYOUT_CHECK: () = {
+                ::core::assert!(
+                    ::core::mem::align_of::<Self>()
+                        == ::core::mem::align_of::<#target_ty>(),
+                    #align_msg
+                );
+                #(#offset_asserts)*
+                ::core::assert!(
+                    ::core::mem::size_of::<Self>()
+                        == ::core::mem::size_of::<#target_ty>(),
+                    "`Self` and `Target` must have the same size"
+                );
+            };
+        });
     }
 }
