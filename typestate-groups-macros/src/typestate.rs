@@ -15,6 +15,7 @@ use syn::{Generics, Ident, ItemStruct, Type, TypeParam, parse_quote};
 pub(crate) use self::args::TypeStateArgs;
 use self::{
     args::Transmute,
+    cast::{CastBy, CastableStateImpl},
     fields::{FieldExt as _, FieldShape},
     item_struct::ItemStructExt as _,
     transmute::TransmutableStateImpl,
@@ -110,11 +111,15 @@ impl TypeState {
                     typestate: self,
                     align,
                 };
-                let castable_state_impls = self.castable_state_impls();
+                let castable_state_impls =
+                    CastBy::ALL.map(|by| CastableStateImpl {
+                        typestate: self,
+                        by,
+                    });
                 Some(quote! {
                     #transmutable_state_impl
 
-                    #castable_state_impls
+                    #(#castable_state_impls)*
                 })
             }
             Transmute::Off => None,

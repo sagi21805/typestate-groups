@@ -3,57 +3,79 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{
-    WherePredicate, parse_quote, parse_quote_spanned,
+    Generics, WherePredicate, parse_quote, parse_quote_spanned,
     spanned::Spanned as _,
 };
 
 use super::{TypeState, fields::FieldShape};
 
-impl TypeState {
-    /// `CastableState<S2, B>` for `Struct<S>`, for every `CastBy` `B`
-    /// and every `S2` whose projections and pointees stay valid under
-    /// it.
-    ///
-    /// `value: S::Value` through `ByRef` ->
-    /// `ReadShared: Permits<S::Value, S2::Value>`
-    pub(super) fn castable_state_impls(&self) -> TokenStream {
-        let struct_ident = &self.item_struct.ident;
-        let target_state = &self.target_state.ident;
-        let (_, ty_generics, _) =
-            self.item_struct.generics.split_for_impl();
-        let pointee_check = PointeeCheck { typestate: self };
+/// `CastableState<S2, B>` for `Struct<S>`, for one `CastBy` `B` and
+/// every `S2` whose projections and pointees stay valid under it.
+///
+/// `value: S::Value` through `ByRef` ->
+/// `ReadShared: Permits<S::Value, S2::Value>`
+pub(super) struct CastableStateImpl<'a> {
+    pub(super) typestate: &'a TypeState,
+    pub(super) by: CastBy,
+}
 
-        CastBy::ALL
-            .into_iter()
-            .map(|by| {
-                let mut generics = self.target_generics.clone();
-                let predicates = &mut generics.make_where_clause().predicates;
-                predicates.push(parse_quote! {
-                    #struct_ident #ty_generics:
-                        ::typestate_groups::TransmutableState<#target_state>
-                });
-                predicates.extend(
-                    self.shapes
-                        .iter()
-                        .flat_map(|shape| self.cast_predicates(shape, by)),
-                );
-                let (impl_generics, _, where_clause) =
-                    generics.split_for_impl();
+impl ToTokens for CastableStateImpl<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let TypeState {
+            item_struct,
+            target_state,
+            ..
+        } = self.typestate;
+        let struct_ident = &item_struct.ident;
+        let target_state = &target_state.ident;
+        let by = self.by;
+        let (_, ty_generics, _) = item_struct.generics.split_for_impl();
+        let generics = self.generics();
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let pointee_check = PointeeCheck {
+            typestate: self.typestate,
+        };
 
-                quote! {
-                    // SAFETY: the where-clause proves every projection and
-                    // pointee valid in the target state under the access
-                    // this `CastBy` gives it, `POINTEE_CHECK` keeps every
-                    // pointee's size and alignment, and every other field
-                    // keeps its type.
-                    unsafe impl #impl_generics ::typestate_groups::CastableState<#target_state, #by>
-                        for #struct_ident #ty_generics #where_clause
-                    {
-                        #pointee_check
-                    }
-                }
-            })
-            .collect()
+        tokens.extend(quote! {
+            // SAFETY: the where-clause proves every projection and
+            // pointee valid in the target state under the access
+            // this `CastBy` gives it, `POINTEE_CHECK` keeps every
+            // pointee's size and alignment, and every other field
+            // keeps its type.
+            unsafe impl #impl_generics ::typestate_groups::CastableState<#target_state, #by>
+                for #struct_ident #ty_generics #where_clause
+            {
+                #pointee_check
+            }
+        });
+    }
+}
+
+impl CastableStateImpl<'_> {
+    /// The target generics, bounded so that the struct transmutes to the
+    /// target state and every field stays valid in it.
+    fn generics(&self) -> Generics {
+        let TypeState {
+            item_struct,
+            target_state,
+            target_generics,
+            shapes,
+            ..
+        } = self.typestate;
+        let struct_ident = &item_struct.ident;
+        let target_state = &target_state.ident;
+        let (_, ty_generics, _) = item_struct.generics.split_for_impl();
+
+        let mut generics = target_generics.clone();
+        let predicates = &mut generics.make_where_clause().predicates;
+        predicates.push(parse_quote! {
+            #struct_ident #ty_generics:
+                ::typestate_groups::TransmutableState<#target_state>
+        });
+        predicates.extend(
+            shapes.iter().flat_map(|shape| self.predicates(shape)),
+        );
+        generics
     }
 
     /// The bounds that keep a field valid in the target state when the
@@ -63,25 +85,21 @@ impl TypeState {
     /// `F<S> -> F<S>: Indirect, F<S2>: Indirect,
     /// <F<S> as Indirect>::CastStateRef:
     /// Permits<<F<S> as Indirect>::Pointee, <F<S2> as Indirect>::Pointee>`
-    fn cast_predicates(
-        &self,
-        shape: &FieldShape,
-        by: CastBy,
-    ) -> Vec<WherePredicate> {
-        let state = &self.state;
-        let target_state = &self.target_state.ident;
+    fn predicates(&self, shape: &FieldShape) -> Vec<WherePredicate> {
+        let state = &self.typestate.state;
+        let target_state = &self.typestate.target_state.ident;
 
         match shape {
             FieldShape::Fixed => Vec::new(),
             FieldShape::Projection(assoc) => {
-                let access = by.field_access();
+                let access = self.by.field_access();
                 vec![parse_quote! {
                     #access: ::typestate_groups::Permits<#state::#assoc, #target_state::#assoc>
                 }]
             }
             FieldShape::Indirect(src) => {
-                let dst = self.in_target_state(src);
-                let access = by.pointee_access();
+                let dst = self.typestate.in_target_state(src);
+                let access = self.by.pointee_access();
                 vec![
                     parse_quote_spanned! {src.span()=>
                         #src: ::typestate_groups::Indirect
@@ -152,7 +170,7 @@ impl ToTokens for PointeeCheck<'_> {
 /// How a cast holds the container, one per `typestate_groups::CastBy`
 /// type.
 #[derive(Clone, Copy)]
-enum CastBy {
+pub(super) enum CastBy {
     /// By value, with `cast_state`.
     Value,
     /// Through `&`, with `cast_state_ref`.
@@ -162,7 +180,8 @@ enum CastBy {
 }
 
 impl CastBy {
-    const ALL: [CastBy; 3] = [CastBy::Value, CastBy::Ref, CastBy::Mut];
+    pub(super) const ALL: [CastBy; 3] =
+        [CastBy::Value, CastBy::Ref, CastBy::Mut];
 
     /// The `typestate_groups::Access` a field held by value gets.
     ///
