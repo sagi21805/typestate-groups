@@ -54,7 +54,7 @@ pub fn state_types(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_trait = parse_macro_input!(item as ItemTrait);
 
     StateTypes::new(&item_trait)
-        .and_then(|state_types| state_types.create_group_marker())
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }

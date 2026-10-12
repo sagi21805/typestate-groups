@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{ItemTrait, TraitItem, TraitItemType, parse_quote};
 
 pub struct StateTypes<'ast> {
@@ -32,7 +32,9 @@ impl<'ast> StateTypes<'ast> {
 
         Ok(StateTypes { inner, types })
     }
+}
 
+impl ToTokens for StateTypes<'_> {
     /// The trait plus its `{Trait}GroupMarker` and `{Trait}GroupMember`
     /// traits.
     ///
@@ -50,7 +52,7 @@ impl<'ast> StateTypes<'ast> {
     /// trait MetaGroupMember<G: MetaGroupMarker>:
     ///     Meta<Marker = G, A = G::A, B = G::B> {}
     /// ```
-    pub fn create_group_marker(&self) -> syn::Result<TokenStream> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let vis = &self.inner.vis;
         let trait_ident = &self.inner.ident;
         let marker_name = crate::naming::group_marker_ident(trait_ident);
@@ -80,7 +82,7 @@ impl<'ast> StateTypes<'ast> {
             #trait_ident<Marker = #group, #(#assocs = #group::#assocs),*>
         };
 
-        Ok(quote! {
+        tokens.extend(quote! {
             #original
 
             #vis trait #marker_name {
@@ -90,6 +92,6 @@ impl<'ast> StateTypes<'ast> {
             #vis trait #member_name<#group: #marker_name>: #member_bound {}
 
             impl<#group: #marker_name, T: #member_bound> #member_name<#group> for T {}
-        })
+        });
     }
 }
