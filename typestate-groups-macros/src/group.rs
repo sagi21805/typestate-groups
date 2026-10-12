@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{Ident, ImplItem, ImplItemType, ItemImpl, LitInt, Type};
 
 pub struct Group<'ast> {
@@ -22,16 +22,19 @@ impl<'ast> Group<'ast> {
         let trait_name = self.trait_name()?;
         let states = self.states()?;
 
-        let mut items: Vec<ImplItem> = self.inner_impl.items.clone();
-        let layouts = self.layouts(&mut items)?;
+        let items = &self.inner_impl.items;
+        let layouts = self.layouts()?;
         let size_asserts = layouts.iter().map(|layout| &layout.assert);
         let layout_items = layouts.iter().map(|layout| &layout.item);
 
-        let items_tokens = quote! { #(#items)* };
+        let stripped_items =
+            items.iter().map(|item| StrippedItem { item });
+        let items_tokens = quote! { #(#stripped_items)* };
         let layout_tokens = quote! { #(#layout_items)* };
         let types = items
             .iter()
-            .filter(|item| matches!(item, ImplItem::Type(_)));
+            .filter(|item| matches!(item, ImplItem::Type(_)))
+            .map(|item| StrippedItem { item });
         let marker_trait = crate::naming::group_marker_ident(trait_name);
         let group_name = self.group_name;
 
@@ -104,13 +107,11 @@ impl<'ast> Group<'ast> {
             .collect()
     }
 
-    /// The layout of every associated type, stripping `#[size(N)]`.
-    fn layouts(
-        &self,
-        items: &mut [ImplItem],
-    ) -> syn::Result<Vec<TypeLayout>> {
-        items
-            .iter_mut()
+    /// The layout of every associated type.
+    fn layouts(&self) -> syn::Result<Vec<TypeLayout>> {
+        self.inner_impl
+            .items
+            .iter()
             .filter_map(|item| match item {
                 ImplItem::Type(impl_ty) => {
                     Some(TypeLayout::new(impl_ty, self.group_name))
@@ -139,10 +140,7 @@ struct TypeLayout {
 }
 
 impl TypeLayout {
-    fn new(
-        impl_ty: &mut ImplItemType,
-        group: &Ident,
-    ) -> syn::Result<Self> {
+    fn new(impl_ty: &ImplItemType, group: &Ident) -> syn::Result<Self> {
         let layout = crate::naming::layout_assoc_ident(&impl_ty.ident);
 
         if impl_ty.attrs.is_empty() {
@@ -175,11 +173,11 @@ pub struct SizeAssert<'a> {
     pub ty: &'a Type,
 }
 
-impl<'a> TryFrom<&'a mut ImplItemType> for SizeAssert<'a> {
+impl<'a> TryFrom<&'a ImplItemType> for SizeAssert<'a> {
     type Error = syn::Error;
 
-    /// Reads and removes `#[size(N)]`, rejecting other attributes.
-    fn try_from(impl_ty: &'a mut ImplItemType) -> syn::Result<Self> {
+    /// Reads `#[size(N)]`, rejecting other attributes.
+    fn try_from(impl_ty: &'a ImplItemType) -> syn::Result<Self> {
         let ident = &impl_ty.ident;
 
         let [attr] = impl_ty.attrs.as_slice() else {
@@ -210,8 +208,6 @@ impl<'a> TryFrom<&'a mut ImplItemType> for SizeAssert<'a> {
             quote!(#ty),
         );
 
-        impl_ty.attrs.clear();
-
         Ok(SizeAssert {
             assert: quote! {
                 const _: () = assert!(::core::mem::size_of::<#ty>() == #size, #msg);
@@ -219,5 +215,23 @@ impl<'a> TryFrom<&'a mut ImplItemType> for SizeAssert<'a> {
             size,
             ty,
         })
+    }
+}
+
+/// An impl item with `#[size(N)]` removed from associated types.
+struct StrippedItem<'a> {
+    item: &'a ImplItem,
+}
+
+impl ToTokens for StrippedItem<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.item {
+            ImplItem::Type(impl_ty) => ImplItemType {
+                attrs: Vec::new(),
+                ..impl_ty.clone()
+            }
+            .to_tokens(tokens),
+            item => item.to_tokens(tokens),
+        }
     }
 }
