@@ -108,6 +108,105 @@ impl ToTokens for GroupTrait<'_> {
     }
 }
 
+/// A trait item `#[group_trait]` accepts.
+enum GroupTraitItem<'a> {
+    /// A method with a `self` receiver, and the names of its other
+    /// arguments.
+    Fn {
+        method: &'a TraitItemFn,
+        args: Vec<&'a Ident>,
+    },
+    /// An associated type without a default.
+    Type(&'a TraitItemType),
+    /// An associated constant without a default.
+    Const(&'a TraitItemConst),
+    /// Any other item, declared but not forwarded.
+    Other(&'a TraitItem),
+}
+
+impl<'a> TryFrom<&'a TraitItem> for GroupTraitItem<'a> {
+    type Error = syn::Error;
+
+    /// Rejects types and constants with a default, and methods whose
+    /// arguments can't be forwarded.
+    fn try_from(item: &'a TraitItem) -> syn::Result<Self> {
+        match item {
+            TraitItem::Fn(method) => Ok(GroupTraitItem::Fn {
+                method,
+                args: method.sig.arg_names()?,
+            }),
+            TraitItem::Type(TraitItemType {
+                ident,
+                default: Some(_),
+                ..
+            })
+            | TraitItem::Const(TraitItemConst {
+                ident,
+                default: Some(_),
+                ..
+            }) => Err(syn::Error::new_spanned(
+                item,
+                format!(
+                    "remove the default and set `{ident}` in each \
+                     `#[group_impl]`: `#[group_trait]` doesn't support \
+                     default types and constants yet"
+                ),
+            )),
+            TraitItem::Type(ty) => Ok(GroupTraitItem::Type(ty)),
+            TraitItem::Const(constant) => {
+                Ok(GroupTraitItem::Const(constant))
+            }
+            other => Ok(GroupTraitItem::Other(other)),
+        }
+    }
+}
+
+#[ext]
+impl Signature {
+    /// The name of each argument after `self`.
+    fn arg_names(&self) -> syn::Result<Vec<&Ident>> {
+        if let Some(asyncness) = &self.asyncness {
+            return Err(syn::Error::new_spanned(
+                asyncness,
+                "remove `async`: `#[group_trait]` doesn't support `async \
+                 fn` yet",
+            ));
+        }
+
+        let mut inputs = self.inputs.iter().enumerate();
+        let Some((_, FnArg::Receiver(_))) = inputs.next() else {
+            return Err(syn::Error::new_spanned(
+                self,
+                format!(
+                    "add a `self` receiver to `{}`: every \
+                     `#[group_trait]` method needs one",
+                    self.ident
+                ),
+            ));
+        };
+
+        inputs
+            .map(|(index, fn_arg)| match fn_arg {
+                FnArg::Typed(PatType { pat, .. }) => match &**pat {
+                    Pat::Ident(PatIdent { ident, .. }) => Ok(ident),
+                    other => Err(syn::Error::new_spanned(
+                        other,
+                        format!(
+                            "bind argument {index} of `{}` to a plain \
+                             name, such as `value: T`: `#[group_trait]` \
+                             forwards arguments by name",
+                            self.ident
+                        ),
+                    )),
+                },
+                FnArg::Receiver(_) => unreachable!(
+                    "syn parses a receiver only as the first argument"
+                ),
+            })
+            .collect()
+    }
+}
+
 /// The trait with its method bodies removed.
 struct PublicTrait<'a> {
     item_trait: &'a ItemTrait,
@@ -137,6 +236,26 @@ impl ToTokens for PublicTrait<'_> {
                 #(#declarations)*
             }
         });
+    }
+}
+
+/// An item as the public trait declares it, with a method's body
+/// removed.
+struct Declaration<'a> {
+    item: &'a GroupTraitItem<'a>,
+}
+
+impl ToTokens for Declaration<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.item {
+            GroupTraitItem::Fn {
+                method: TraitItemFn { attrs, sig, .. },
+                ..
+            } => tokens.extend(quote!(#(#attrs)* #sig;)),
+            GroupTraitItem::Type(ty) => ty.to_tokens(tokens),
+            GroupTraitItem::Const(constant) => constant.to_tokens(tokens),
+            GroupTraitItem::Other(item) => item.to_tokens(tokens),
+        }
     }
 }
 
@@ -345,123 +464,4 @@ impl Parse for GroupTraitArgs {
 
 mod kw {
     syn::custom_keyword!(by);
-}
-
-/// A trait item `#[group_trait]` accepts.
-enum GroupTraitItem<'a> {
-    /// A method with a `self` receiver, and the names of its other
-    /// arguments.
-    Fn {
-        method: &'a TraitItemFn,
-        args: Vec<&'a Ident>,
-    },
-    /// An associated type without a default.
-    Type(&'a TraitItemType),
-    /// An associated constant without a default.
-    Const(&'a TraitItemConst),
-    /// Any other item, declared but not forwarded.
-    Other(&'a TraitItem),
-}
-
-impl<'a> TryFrom<&'a TraitItem> for GroupTraitItem<'a> {
-    type Error = syn::Error;
-
-    /// Rejects types and constants with a default, and methods whose
-    /// arguments can't be forwarded.
-    fn try_from(item: &'a TraitItem) -> syn::Result<Self> {
-        match item {
-            TraitItem::Fn(method) => Ok(GroupTraitItem::Fn {
-                method,
-                args: method.sig.arg_names()?,
-            }),
-            TraitItem::Type(TraitItemType {
-                ident,
-                default: Some(_),
-                ..
-            })
-            | TraitItem::Const(TraitItemConst {
-                ident,
-                default: Some(_),
-                ..
-            }) => Err(syn::Error::new_spanned(
-                item,
-                format!(
-                    "remove the default and set `{ident}` in each \
-                     `#[group_impl]`: `#[group_trait]` doesn't support \
-                     default types and constants yet"
-                ),
-            )),
-            TraitItem::Type(ty) => Ok(GroupTraitItem::Type(ty)),
-            TraitItem::Const(constant) => {
-                Ok(GroupTraitItem::Const(constant))
-            }
-            other => Ok(GroupTraitItem::Other(other)),
-        }
-    }
-}
-
-/// An item as the public trait declares it, with a method's body
-/// removed.
-struct Declaration<'a> {
-    item: &'a GroupTraitItem<'a>,
-}
-
-impl ToTokens for Declaration<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self.item {
-            GroupTraitItem::Fn {
-                method: TraitItemFn { attrs, sig, .. },
-                ..
-            } => tokens.extend(quote!(#(#attrs)* #sig;)),
-            GroupTraitItem::Type(ty) => ty.to_tokens(tokens),
-            GroupTraitItem::Const(constant) => constant.to_tokens(tokens),
-            GroupTraitItem::Other(item) => item.to_tokens(tokens),
-        }
-    }
-}
-
-#[ext]
-impl Signature {
-    /// The name of each argument after `self`.
-    fn arg_names(&self) -> syn::Result<Vec<&Ident>> {
-        if let Some(asyncness) = &self.asyncness {
-            return Err(syn::Error::new_spanned(
-                asyncness,
-                "remove `async`: `#[group_trait]` doesn't support `async \
-                 fn` yet",
-            ));
-        }
-
-        let mut inputs = self.inputs.iter().enumerate();
-        let Some((_, FnArg::Receiver(_))) = inputs.next() else {
-            return Err(syn::Error::new_spanned(
-                self,
-                format!(
-                    "add a `self` receiver to `{}`: every \
-                     `#[group_trait]` method needs one",
-                    self.ident
-                ),
-            ));
-        };
-
-        inputs
-            .map(|(index, fn_arg)| match fn_arg {
-                FnArg::Typed(PatType { pat, .. }) => match &**pat {
-                    Pat::Ident(PatIdent { ident, .. }) => Ok(ident),
-                    other => Err(syn::Error::new_spanned(
-                        other,
-                        format!(
-                            "bind argument {index} of `{}` to a plain \
-                             name, such as `value: T`: `#[group_trait]` \
-                             forwards arguments by name",
-                            self.ident
-                        ),
-                    )),
-                },
-                FnArg::Receiver(_) => unreachable!(
-                    "syn parses a receiver only as the first argument"
-                ),
-            })
-            .collect()
-    }
 }
