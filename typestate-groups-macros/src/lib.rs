@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use quote::ToTokens;
 use syn::{Ident, ItemImpl, ItemStruct, ItemTrait, parse_macro_input};
 
 use crate::{
@@ -168,7 +169,7 @@ pub fn typestate(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as TypeStateArgs);
 
     TypeState::new(args, item_struct)
-        .map(|typestate| typestate.generate_typestate_impls())
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }

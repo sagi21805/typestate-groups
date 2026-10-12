@@ -100,8 +100,17 @@ impl TypeState {
         })
     }
 
+    /// `ty` in the target state.
+    ///
+    /// `NonNull<S::Value>` -> `NonNull<S2::Value>`
+    fn in_target_state(&self, ty: &Type) -> Type {
+        ty.renamed(&self.state, &self.target_state.ident)
+    }
+}
+
+impl ToTokens for TypeState {
     /// The struct followed by every impl `#[typestate]` derives for it.
-    pub(crate) fn generate_typestate_impls(&self) -> TokenStream {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let item_struct = &self.item_struct;
         let with_state_impl = WithStateImpl { typestate: self };
         let restate_impl = RestateImpl { typestate: self };
@@ -125,7 +134,7 @@ impl TypeState {
             Transmute::Off => None,
         };
 
-        quote! {
+        tokens.extend(quote! {
             #item_struct
 
             #with_state_impl
@@ -133,14 +142,7 @@ impl TypeState {
             #restate_impl
 
             #transmute_impls
-        }
-    }
-
-    /// `ty` in the target state.
-    ///
-    /// `NonNull<S::Value>` -> `NonNull<S2::Value>`
-    fn in_target_state(&self, ty: &Type) -> Type {
-        ty.renamed(&self.state, &self.target_state.ident)
+        });
     }
 }
 
