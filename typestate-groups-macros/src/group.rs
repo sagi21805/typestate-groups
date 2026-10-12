@@ -1,3 +1,4 @@
+use extend::ext;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{
@@ -5,27 +6,42 @@ use syn::{
 };
 
 pub struct Group<'ast> {
-    inner_impl: &'ast ItemImpl,
     group_name: &'ast Ident,
+    /// `Meta` in `impl Meta for (StateA, StateB)`.
+    trait_name: &'ast Ident,
+    states: Vec<&'ast Ident>,
+    items: &'ast [ImplItem],
+    layouts: Vec<TypeLayout<'ast>>,
 }
 
 impl<'ast> Group<'ast> {
+    /// Reads the trait, the states and the layout of every associated
+    /// type.
     pub fn new(
         item_impl: &'ast ItemImpl,
         group_name: &'ast Ident,
-    ) -> Group<'ast> {
-        Group {
-            inner_impl: item_impl,
+    ) -> syn::Result<Group<'ast>> {
+        Ok(Group {
             group_name,
-        }
+            trait_name: item_impl.trait_name()?,
+            states: item_impl.states()?,
+            items: &item_impl.items,
+            layouts: item_impl.layouts(group_name)?,
+        })
     }
+}
 
-    pub fn generate_group_impl(&self) -> syn::Result<TokenStream> {
-        let trait_name = self.trait_name()?;
-        let states = self.states()?;
-
-        let items = &self.inner_impl.items;
-        let layouts = self.layouts()?;
+impl ToTokens for Group<'_> {
+    /// The group's marker type, its size assertions, and the trait impl
+    /// for every state.
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Group {
+            group_name,
+            trait_name,
+            states,
+            items,
+            layouts,
+        } = self;
         let size_asserts =
             layouts.iter().map(|layout| &layout.size_assert);
 
@@ -38,9 +54,8 @@ impl<'ast> Group<'ast> {
             .filter(|item| matches!(item, ImplItem::Type(_)))
             .map(|item| StrippedItem { item });
         let marker_trait = crate::naming::group_marker_ident(trait_name);
-        let group_name = self.group_name;
 
-        Ok(quote! {
+        tokens.extend(quote! {
             pub struct #group_name;
 
             impl ::typestate_groups::Group for #group_name {}
@@ -58,19 +73,21 @@ impl<'ast> Group<'ast> {
                     #layout_tokens
                 }
             )*
-        })
+        });
     }
+}
 
+#[ext]
+impl ItemImpl {
     /// `impl Testing for (StateA, StateB)` -> `Testing`
-    fn trait_name(&self) -> syn::Result<&'ast Ident> {
-        let (trait_path, _) =
-            self.inner_impl.trait_.as_ref().ok_or_else(|| {
-                syn::Error::new_spanned(
-                    self.inner_impl,
-                    "use `#[group]` on a trait impl, such as `impl Meta \
-                     for (StateA, StateB)`",
-                )
-            })?;
+    fn trait_name(&self) -> syn::Result<&Ident> {
+        let (trait_path, _) = self.trait_.as_ref().ok_or_else(|| {
+            syn::Error::new_spanned(
+                self,
+                "use `#[group]` on a trait impl, such as `impl Meta for \
+                 (StateA, StateB)`",
+            )
+        })?;
 
         trait_path.get_ident().ok_or_else(|| {
             syn::Error::new_spanned(
@@ -82,10 +99,10 @@ impl<'ast> Group<'ast> {
     }
 
     /// `(StateA, StateB) -> [StateA, StateB]`
-    fn states(&self) -> syn::Result<Vec<&'ast Ident>> {
-        let Type::Tuple(tup) = self.inner_impl.self_ty.as_ref() else {
+    fn states(&self) -> syn::Result<Vec<&Ident>> {
+        let Type::Tuple(tup) = self.self_ty.as_ref() else {
             return Err(syn::Error::new_spanned(
-                &self.inner_impl.self_ty,
+                &self.self_ty,
                 "implement the trait for a tuple of states, such as \
                  `(StateA, StateB)`",
             ));
@@ -110,13 +127,15 @@ impl<'ast> Group<'ast> {
     }
 
     /// The layout of every associated type.
-    fn layouts(&self) -> syn::Result<Vec<TypeLayout<'ast>>> {
-        self.inner_impl
-            .items
+    fn layouts<'a>(
+        &'a self,
+        group: &'a Ident,
+    ) -> syn::Result<Vec<TypeLayout<'a>>> {
+        self.items
             .iter()
             .filter_map(|item| match item {
                 ImplItem::Type(impl_ty) => {
-                    Some(TypeLayout::new(impl_ty, self.group_name))
+                    Some(TypeLayout::new(impl_ty, group))
                 }
                 _ => None,
             })

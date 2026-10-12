@@ -89,7 +89,7 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = parse_macro_input!(attr as Ident);
 
     Group::new(&item_impl, &name)
-        .generate_group_impl()
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
