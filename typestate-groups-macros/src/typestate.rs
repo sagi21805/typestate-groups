@@ -30,7 +30,7 @@ pub(crate) struct TypeState {
     /// The target state, with the state's inline bounds.
     target_state: TypeParam,
     /// `Wrap<S> -> Wrap<__TypestateGroupsTargetState>`
-    target_ty: TokenStream,
+    target_ty: Type,
     /// The generics every derived impl starts from: the struct's, plus
     /// the target state.
     target_generics: Generics,

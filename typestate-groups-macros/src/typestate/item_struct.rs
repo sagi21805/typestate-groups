@@ -1,16 +1,15 @@
 //! Reading and adjusting the struct `#[typestate]` is applied to.
 
 use extend::ext;
-use proc_macro2::TokenStream;
-use quote::quote;
 use syn::{
-    Attribute, ConstParam, GenericParam, Generics, Ident, ItemStruct,
-    LifetimeParam, TypeParam, WherePredicate, parse_quote,
+    Attribute, GenericParam, Generics, Ident, ItemStruct, Type, TypeParam,
+    WherePredicate, parse_quote,
 };
 
 use super::{args::Alignment, fields::TypeExt as _};
 use crate::syn_ext::{
-    AttributeExt as _, GenericsExt as _, WherePredicateExt as _,
+    AttributeExt as _, GenericsExt as _, TypeExt as _,
+    WherePredicateExt as _,
 };
 
 #[ext]
@@ -138,25 +137,11 @@ pub(super) impl ItemStruct {
     }
 
     /// `Wrap<S> -> Wrap<target_state>`
-    fn with_state(
-        &self,
-        state: &Ident,
-        target_state: &Ident,
-    ) -> TokenStream {
+    fn with_state(&self, state: &Ident, target_state: &Ident) -> Type {
         let struct_ident = &self.ident;
-        let args = self.generics.params.iter().map(|param| match param {
-            GenericParam::Type(param) if param.ident == *state => {
-                quote!(#target_state)
-            }
-            GenericParam::Type(TypeParam { ident, .. })
-            | GenericParam::Const(ConstParam { ident, .. }) => {
-                quote!(#ident)
-            }
-            GenericParam::Lifetime(LifetimeParam { lifetime, .. }) => {
-                quote!(#lifetime)
-            }
-        });
+        let (_, ty_generics, _) = self.generics.split_for_impl();
+        let ty: Type = parse_quote!(#struct_ident #ty_generics);
 
-        quote!(#struct_ident<#(#args),*>)
+        ty.renamed(state, target_state)
     }
 }
