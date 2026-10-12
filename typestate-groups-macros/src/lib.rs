@@ -187,7 +187,7 @@ pub fn typestate(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(item as ItemStruct);
 
-    State::new(&item_struct).generate_state_impl().into()
+    State::new(&item_struct).into_token_stream().into()
 }
 
 /// Declares a trait each group implements with `#[group_impl]`.

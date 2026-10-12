@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::ItemStruct;
 
 pub(crate) struct State<'ast> {
@@ -10,17 +10,20 @@ impl<'ast> State<'ast> {
     pub(crate) fn new(item_struct: &'ast ItemStruct) -> State<'ast> {
         State { item_struct }
     }
+}
 
-    pub(crate) fn generate_state_impl(&self) -> TokenStream {
+impl ToTokens for State<'_> {
+    /// The struct followed by its `State` impl.
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let item_struct = self.item_struct;
         let struct_ident = &item_struct.ident;
         let (impl_generics, ty_generics, where_clause) =
             item_struct.generics.split_for_impl();
 
-        quote! {
+        tokens.extend(quote! {
             #item_struct
 
             impl #impl_generics ::typestate_groups::State for #struct_ident #ty_generics #where_clause {}
-        }
+        });
     }
 }
