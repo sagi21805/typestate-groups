@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use quote::ToTokens;
 use syn::{Ident, ItemImpl, ItemStruct, ItemTrait, parse_macro_input};
 
 use crate::{
@@ -53,7 +54,7 @@ pub fn state_types(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_trait = parse_macro_input!(item as ItemTrait);
 
     StateTypes::new(&item_trait)
-        .and_then(|state_types| state_types.create_group_marker())
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
@@ -88,7 +89,7 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = parse_macro_input!(attr as Ident);
 
     Group::new(&item_impl, &name)
-        .generate_group_impl()
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
@@ -104,7 +105,7 @@ pub fn group_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as GroupImplArgs);
 
     GroupImpl::new(&args, &item_impl)
-        .map(|group_impl| group_impl.create_group_impl())
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
@@ -168,7 +169,7 @@ pub fn typestate(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as TypeStateArgs);
 
     TypeState::new(args, item_struct)
-        .map(|typestate| typestate.generate_typestate_impls())
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }
@@ -186,7 +187,7 @@ pub fn typestate(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(item as ItemStruct);
 
-    State::new(&item_struct).generate_state_impl().into()
+    State::new(&item_struct).into_token_stream().into()
 }
 
 /// Declares a trait each group implements with `#[group_impl]`.
@@ -255,7 +256,7 @@ pub fn group_trait(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as GroupTraitArgs);
 
     GroupTrait::new(&args, &item_trait)
-        .generate_group_trait()
+        .map(ToTokens::into_token_stream)
         .unwrap_or_else(|err| err.into_compile_error())
         .into()
 }

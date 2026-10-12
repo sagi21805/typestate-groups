@@ -1,6 +1,6 @@
 use extend::ext;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{
     FnArg, GenericParam, Generics, Ident, ItemTrait, Pat, PatIdent,
     PatType, Path, Signature, Token, TraitItem, TraitItemConst,
@@ -14,18 +14,21 @@ use crate::syn_ext::{
 };
 
 pub struct GroupTrait<'ast> {
-    args: &'ast GroupTraitArgs,
     item_trait: &'ast ItemTrait,
+    /// `Meta` in `#[group_trait(by = Meta)]`.
+    state_types: &'ast TypePath,
     /// `__a_helper_mod::AHelper<'a, <<I as WithState>::State as
     /// Trait>::Marker, T>`
     helper_bound: Path,
+    items: Vec<GroupTraitItem<'ast>>,
 }
 
 impl<'ast> GroupTrait<'ast> {
+    /// Builds the helper bound and validates the trait's items.
     pub fn new(
         args: &'ast GroupTraitArgs,
         item_trait: &'ast ItemTrait,
-    ) -> GroupTrait<'ast> {
+    ) -> syn::Result<GroupTrait<'ast>> {
         let state_types = &args.ty;
         let implementor = crate::naming::implementor_ident();
         let helper_ident =
@@ -38,15 +41,24 @@ impl<'ast> GroupTrait<'ast> {
             <<#implementor as ::typestate_groups::WithState>::State as #state_types>::Marker
         });
 
-        GroupTrait {
-            args,
+        let items = item_trait
+            .items
+            .iter()
+            .map(GroupTraitItem::try_from)
+            .collect::<syn::Result<_>>()?;
+
+        Ok(GroupTrait {
             item_trait,
+            state_types,
             helper_bound: parse_quote!(
                 #helper_mod_ident::#helper_ident #helper_args
             ),
-        }
+            items,
+        })
     }
+}
 
+impl ToTokens for GroupTrait<'_> {
     /// The trait, its helper module, and a blanket impl forwarding to the
     /// helper impl of the state's group.
     ///
@@ -72,20 +84,137 @@ impl<'ast> GroupTrait<'ast> {
     ///     fn describe(&self) -> T { <I as DescribeHelper<..>>::describe(self) }
     /// }
     /// ```
-    pub fn generate_group_trait(&self) -> syn::Result<TokenStream> {
-        let public_trait = self.public_trait()?;
-        let helper_mod = self.helper_mod();
-        let blanket_impl = self.blanket_impl()?;
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let public_trait = PublicTrait {
+            item_trait: self.item_trait,
+            items: &self.items,
+        };
+        let helper_mod = HelperMod {
+            item_trait: self.item_trait,
+            state_types: &self.state_types.path,
+        };
+        let blanket_impl = BlanketImpl {
+            item_trait: self.item_trait,
+            state_types: self.state_types,
+            helper_bound: &self.helper_bound,
+            items: &self.items,
+        };
 
-        Ok(quote! {
+        tokens.extend(quote! {
             #public_trait
             #helper_mod
             #blanket_impl
-        })
+        });
     }
+}
 
-    /// The trait with its method bodies removed.
-    fn public_trait(&self) -> syn::Result<TokenStream> {
+/// A trait item `#[group_trait]` accepts.
+enum GroupTraitItem<'a> {
+    /// A method with a `self` receiver, and the names of its other
+    /// arguments.
+    Fn {
+        method: &'a TraitItemFn,
+        args: Vec<&'a Ident>,
+    },
+    /// An associated type without a default.
+    Type(&'a TraitItemType),
+    /// An associated constant without a default.
+    Const(&'a TraitItemConst),
+    /// Any other item, declared but not forwarded.
+    Other(&'a TraitItem),
+}
+
+impl<'a> TryFrom<&'a TraitItem> for GroupTraitItem<'a> {
+    type Error = syn::Error;
+
+    /// Rejects types and constants with a default, and methods whose
+    /// arguments can't be forwarded.
+    fn try_from(item: &'a TraitItem) -> syn::Result<Self> {
+        match item {
+            TraitItem::Fn(method) => Ok(GroupTraitItem::Fn {
+                method,
+                args: method.sig.arg_names()?,
+            }),
+            TraitItem::Type(TraitItemType {
+                ident,
+                default: Some(_),
+                ..
+            })
+            | TraitItem::Const(TraitItemConst {
+                ident,
+                default: Some(_),
+                ..
+            }) => Err(syn::Error::new_spanned(
+                item,
+                format!(
+                    "remove the default and set `{ident}` in each \
+                     `#[group_impl]`: `#[group_trait]` doesn't support \
+                     default types and constants yet"
+                ),
+            )),
+            TraitItem::Type(ty) => Ok(GroupTraitItem::Type(ty)),
+            TraitItem::Const(constant) => {
+                Ok(GroupTraitItem::Const(constant))
+            }
+            other => Ok(GroupTraitItem::Other(other)),
+        }
+    }
+}
+
+#[ext]
+impl Signature {
+    /// The name of each argument after `self`.
+    fn arg_names(&self) -> syn::Result<Vec<&Ident>> {
+        if let Some(asyncness) = &self.asyncness {
+            return Err(syn::Error::new_spanned(
+                asyncness,
+                "remove `async`: `#[group_trait]` doesn't support `async \
+                 fn` yet",
+            ));
+        }
+
+        let mut inputs = self.inputs.iter().enumerate();
+        let Some((_, FnArg::Receiver(_))) = inputs.next() else {
+            return Err(syn::Error::new_spanned(
+                self,
+                format!(
+                    "add a `self` receiver to `{}`: every \
+                     `#[group_trait]` method needs one",
+                    self.ident
+                ),
+            ));
+        };
+
+        inputs
+            .map(|(index, fn_arg)| match fn_arg {
+                FnArg::Typed(PatType { pat, .. }) => match &**pat {
+                    Pat::Ident(PatIdent { ident, .. }) => Ok(ident),
+                    other => Err(syn::Error::new_spanned(
+                        other,
+                        format!(
+                            "bind argument {index} of `{}` to a plain \
+                             name, such as `value: T`: `#[group_trait]` \
+                             forwards arguments by name",
+                            self.ident
+                        ),
+                    )),
+                },
+                FnArg::Receiver(_) => unreachable!(
+                    "syn parses a receiver only as the first argument"
+                ),
+            })
+            .collect()
+    }
+}
+
+/// The trait with its method bodies removed.
+struct PublicTrait<'a> {
+    item_trait: &'a ItemTrait,
+    items: &'a [GroupTraitItem<'a>],
+}
+
+impl ToTokens for PublicTrait<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let ItemTrait {
             attrs,
             vis,
@@ -94,27 +223,51 @@ impl<'ast> GroupTrait<'ast> {
             generics,
             colon_token,
             supertraits,
-            items,
             ..
         } = self.item_trait;
         let where_clause = &generics.where_clause;
 
-        let declarations = items
-            .iter()
-            .map(TraitItem::declaration)
-            .collect::<syn::Result<Vec<_>>>()?;
+        let declarations =
+            self.items.iter().map(|item| Declaration { item });
 
-        Ok(quote! {
+        tokens.extend(quote! {
             #(#attrs)*
             #unsafety #vis trait #ident #generics #colon_token #supertraits #where_clause {
                 #(#declarations)*
             }
-        })
+        });
     }
+}
 
-    /// The helper trait, with the group as its first type parameter, and
-    /// `Member`, which every state in the group implements.
-    fn helper_mod(&self) -> TokenStream {
+/// An item as the public trait declares it, with a method's body
+/// removed.
+struct Declaration<'a> {
+    item: &'a GroupTraitItem<'a>,
+}
+
+impl ToTokens for Declaration<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.item {
+            GroupTraitItem::Fn {
+                method: TraitItemFn { attrs, sig, .. },
+                ..
+            } => tokens.extend(quote!(#(#attrs)* #sig;)),
+            GroupTraitItem::Type(ty) => ty.to_tokens(tokens),
+            GroupTraitItem::Const(constant) => constant.to_tokens(tokens),
+            GroupTraitItem::Other(item) => item.to_tokens(tokens),
+        }
+    }
+}
+
+/// The helper trait, with the group as its first type parameter, and
+/// `Member`, which every state in the group implements.
+struct HelperMod<'a> {
+    item_trait: &'a ItemTrait,
+    state_types: &'a Path,
+}
+
+impl ToTokens for HelperMod<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let ItemTrait {
             attrs,
             vis,
@@ -131,7 +284,7 @@ impl<'ast> GroupTrait<'ast> {
         let member_ident = crate::naming::helper_member_ident();
         let group = crate::naming::group_param_ident();
 
-        let state_types = &self.args.ty.path;
+        let state_types = self.state_types;
         let marker_trait =
             state_types.with_last_ident(crate::naming::group_marker_ident);
         let member_trait =
@@ -143,7 +296,7 @@ impl<'ast> GroupTrait<'ast> {
             parse_quote!(#group: #marker_trait),
         );
 
-        quote! {
+        tokens.extend(quote! {
             #[doc(hidden)]
             #vis mod #helper_mod_ident {
                 use super::*;
@@ -157,35 +310,52 @@ impl<'ast> GroupTrait<'ast> {
 
                 impl<#group: #marker_trait, T: #member_trait<#group>> #member_ident<#group> for T {}
             }
-        }
+        });
     }
+}
 
-    /// The trait implemented for every state type whose group has a helper
-    /// impl, forwarding each item to that impl.
-    fn blanket_impl(&self) -> syn::Result<TokenStream> {
+/// The trait implemented for every state type whose group has a helper
+/// impl, forwarding each item to that impl.
+struct BlanketImpl<'a> {
+    item_trait: &'a ItemTrait,
+    state_types: &'a TypePath,
+    helper_bound: &'a Path,
+    items: &'a [GroupTraitItem<'a>],
+}
+
+impl ToTokens for BlanketImpl<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let ItemTrait {
             ident, generics, ..
         } = self.item_trait;
         let implementor = crate::naming::implementor_ident();
-        let delegations = self.delegations()?;
+        let delegations = self.items.iter().map(|item| Delegation {
+            item,
+            helper_bound: self.helper_bound,
+        });
 
-        let blanket_generics = self.blanket_impl_generics();
+        let blanket_generics = self.generics();
         let (impl_generics, _, where_clause) =
             blanket_generics.split_for_impl();
         let (_, ty_generics, _) = generics.split_for_impl();
 
-        Ok(quote! {
+        tokens.extend(quote! {
             impl #impl_generics #ident #ty_generics for #implementor #where_clause {
                 #(#delegations)*
             }
-        })
+        });
     }
+}
 
+impl BlanketImpl<'_> {
     /// `<T>` -> `<T, I> where I: WithState, <I as WithState>::State:
     /// Meta, I: DescribeHelper<..>`
-    fn blanket_impl_generics(&self) -> Generics {
-        let state_types = &self.args.ty;
-        let helper_bound = &self.helper_bound;
+    fn generics(&self) -> Generics {
+        let BlanketImpl {
+            state_types,
+            helper_bound,
+            ..
+        } = self;
         let implementor = crate::naming::implementor_ident();
 
         let mut generics = self.item_trait.generics.clone();
@@ -205,67 +375,76 @@ impl<'ast> GroupTrait<'ast> {
             .extend(implementor_bounds);
         generics
     }
+}
 
-    /// Every method, type and constant of the trait, forwarded to the
-    /// helper trait.
-    fn delegations(&self) -> syn::Result<Vec<TokenStream>> {
-        self.item_trait
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                TraitItem::Fn(method) => Some(self.delegate_fn(method)),
-                TraitItem::Type(ty) => Some(Ok(self.delegate_type(ty))),
-                TraitItem::Const(constant) => {
-                    Some(Ok(self.delegate_const(constant)))
-                }
-                _ => None,
-            })
-            .collect()
-    }
+/// An item forwarded to the helper trait's version of it.
+///
+/// `const N: usize;` -> `const N: usize = <I as AHelper<..>>::N;`
+struct Delegation<'a> {
+    item: &'a GroupTraitItem<'a>,
+    helper_bound: &'a Path,
+}
 
-    /// `method` with a body that calls the helper trait's version.
-    fn delegate_fn(
-        &self,
-        method: &TraitItemFn,
-    ) -> syn::Result<TokenStream> {
-        let sig = &method.sig;
-        let args = sig.forwarded_args()?;
-        let helper_fn = self.helper_item(&sig.ident);
-
-        Ok(quote! {
-            #sig {
-                #helper_fn(#(#args),*)
+impl ToTokens for Delegation<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.item {
+            GroupTraitItem::Fn {
+                method: TraitItemFn { sig, .. },
+                args,
+            } => {
+                let helper_fn = self.helper_item(&sig.ident);
+                tokens.extend(quote! {
+                    #sig {
+                        #helper_fn(self, #(#args),*)
+                    }
+                });
             }
-        })
+            GroupTraitItem::Type(TraitItemType {
+                ident,
+                generics,
+                ..
+            }) => {
+                let helper_type = self.helper_item(ident);
+                let args = generics.to_arguments();
+                let where_clause = &generics.where_clause;
+                tokens.extend(quote! {
+                    type #ident #generics = #helper_type #args #where_clause;
+                });
+            }
+            GroupTraitItem::Const(TraitItemConst {
+                ident, ty, ..
+            }) => {
+                let helper_const = self.helper_item(ident);
+                tokens.extend(quote!(const #ident: #ty = #helper_const;));
+            }
+            GroupTraitItem::Other(_) => {}
+        }
     }
+}
 
-    /// `type Ref<'a>: Bound where Self: 'a;` -> `type Ref<'a> = <I as
-    /// AHelper<..>>::Ref<'a> where Self: 'a;`
-    fn delegate_type(&self, ty: &TraitItemType) -> TokenStream {
-        let TraitItemType {
-            ident, generics, ..
-        } = ty;
-        let helper_type = self.helper_item(ident);
-        let args = generics.to_arguments();
-        let where_clause = &generics.where_clause;
-
-        quote!(type #ident #generics = #helper_type #args #where_clause;)
-    }
-
-    /// `const N: usize;` -> `const N: usize = <I as AHelper<..>>::N;`
-    fn delegate_const(&self, constant: &TraitItemConst) -> TokenStream {
-        let TraitItemConst { ident, ty, .. } = constant;
-        let helper_const = self.helper_item(ident);
-
-        quote!(const #ident: #ty = #helper_const;)
-    }
-
+impl<'a> Delegation<'a> {
     /// `item` -> `<I as AHelper<..>>::item`
-    fn helper_item(&self, item: &Ident) -> TokenStream {
-        let implementor = crate::naming::implementor_ident();
-        let helper_bound = &self.helper_bound;
+    fn helper_item(&self, item: &'a Ident) -> HelperItem<'a> {
+        HelperItem {
+            helper_bound: self.helper_bound,
+            item,
+        }
+    }
+}
 
-        quote!(<#implementor as #helper_bound>::#item)
+/// `<I as AHelper<..>>::item`, a trait item reached through the helper
+/// trait.
+struct HelperItem<'a> {
+    helper_bound: &'a Path,
+    item: &'a Ident,
+}
+
+impl ToTokens for HelperItem<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let implementor = crate::naming::implementor_ident();
+        let HelperItem { helper_bound, item } = self;
+
+        tokens.extend(quote!(<#implementor as #helper_bound>::#item));
     }
 }
 
@@ -285,82 +464,4 @@ impl Parse for GroupTraitArgs {
 
 mod kw {
     syn::custom_keyword!(by);
-}
-
-#[ext]
-impl TraitItem {
-    /// This item as the public trait declares it, with a method's body
-    /// removed. Types and constants with a default are errors.
-    fn declaration(&self) -> syn::Result<TokenStream> {
-        match self {
-            TraitItem::Fn(TraitItemFn { attrs, sig, .. }) => {
-                Ok(quote!(#(#attrs)* #sig;))
-            }
-            TraitItem::Type(TraitItemType {
-                ident,
-                default: Some(_),
-                ..
-            })
-            | TraitItem::Const(TraitItemConst {
-                ident,
-                default: Some(_),
-                ..
-            }) => Err(syn::Error::new_spanned(
-                self,
-                format!(
-                    "remove the default and set `{ident}` in each \
-                     `#[group_impl]`: `#[group_trait]` doesn't support \
-                     default types and constants yet"
-                ),
-            )),
-            other => Ok(quote!(#other)),
-        }
-    }
-}
-
-#[ext]
-impl Signature {
-    /// `self` and each argument's name.
-    fn forwarded_args(&self) -> syn::Result<Vec<TokenStream>> {
-        if let Some(asyncness) = &self.asyncness {
-            return Err(syn::Error::new_spanned(
-                asyncness,
-                "remove `async`: `#[group_trait]` doesn't support `async \
-                 fn` yet",
-            ));
-        }
-
-        if self.receiver().is_none() {
-            return Err(syn::Error::new_spanned(
-                self,
-                format!(
-                    "add a `self` receiver to `{}`: every \
-                     `#[group_trait]` method needs one",
-                    self.ident
-                ),
-            ));
-        }
-
-        self.inputs
-            .iter()
-            .enumerate()
-            .map(|(index, fn_arg)| match fn_arg {
-                FnArg::Receiver(_) => Ok(quote!(self)),
-                FnArg::Typed(PatType { pat, .. }) => match &**pat {
-                    Pat::Ident(PatIdent { ident, .. }) => {
-                        Ok(quote!(#ident))
-                    }
-                    other => Err(syn::Error::new_spanned(
-                        other,
-                        format!(
-                            "bind argument {index} of `{}` to a plain \
-                             name, such as `value: T`: `#[group_trait]` \
-                             forwards arguments by name",
-                            self.ident
-                        ),
-                    )),
-                },
-            })
-            .collect()
-    }
 }

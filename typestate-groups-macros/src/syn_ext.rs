@@ -4,7 +4,7 @@ use core::mem;
 
 use extend::ext;
 use proc_macro2::{TokenStream, TokenTree};
-use quote::{ToTokens, quote};
+use quote::ToTokens;
 use syn::{
     AssocType, Attribute, ConstParam, Expr, ExprPath, GenericArgument,
     GenericParam, Generics, Ident, ImplItem, ImplItemConst, ImplItemFn,
@@ -29,28 +29,16 @@ pub(crate) impl Type {
         }
     }
 
-    /// A value of this type when it's `()` or `PhantomData<..>`.
-    fn zst_value(&self) -> Option<TokenStream> {
-        let path = match self.peeled() {
-            Type::Tuple(tuple) => {
-                return tuple.elems.is_empty().then(|| quote!(()));
-            }
+    /// Whether this type's spelling shows it to be a ZST: `()` or
+    /// `PhantomData<..>`.
+    fn is_zst(&self) -> bool {
+        match self.peeled() {
+            Type::Tuple(tuple) => tuple.elems.is_empty(),
             Type::Path(TypePath {
                 qself: None, path, ..
-            }) => path,
-            _ => return None,
-        };
-
-        if path.is_std_item("marker", "PhantomData") {
-            Some(quote!(::core::marker::PhantomData))
-        } else {
-            None
+            }) => path.is_std_item("marker", "PhantomData"),
+            _ => false,
         }
-    }
-
-    /// Whether this type's spelling shows it to be a ZST.
-    fn is_zst(&self) -> bool {
-        self.zst_value().is_some()
     }
 
     /// Whether `ident` appears anywhere inside this type, macro tokens
