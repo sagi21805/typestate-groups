@@ -173,7 +173,10 @@ impl<'ast> GroupTrait<'ast> {
             ident, generics, ..
         } = self.item_trait;
         let implementor = crate::naming::implementor_ident();
-        let delegations = self.delegations();
+        let delegations = self.items.iter().map(|item| Delegation {
+            item,
+            helper_bound: &self.helper_bound,
+        });
 
         let blanket_generics = self.blanket_impl_generics();
         let (impl_generics, _, where_clause) =
@@ -211,65 +214,58 @@ impl<'ast> GroupTrait<'ast> {
             .extend(implementor_bounds);
         generics
     }
+}
 
-    /// Every method, type and constant of the trait, forwarded to the
-    /// helper trait.
-    fn delegations(&self) -> Vec<TokenStream> {
-        self.items
-            .iter()
-            .filter_map(|item| match item {
-                GroupTraitItem::Fn { method, args } => {
-                    Some(self.delegate_fn(&method.sig, args))
-                }
-                GroupTraitItem::Type(ty) => Some(self.delegate_type(ty)),
-                GroupTraitItem::Const(constant) => {
-                    Some(self.delegate_const(constant))
-                }
-                GroupTraitItem::Other(_) => None,
-            })
-            .collect()
-    }
+/// An item forwarded to the helper trait's version of it.
+///
+/// `const N: usize;` -> `const N: usize = <I as AHelper<..>>::N;`
+struct Delegation<'a> {
+    item: &'a GroupTraitItem<'a>,
+    helper_bound: &'a Path,
+}
 
-    /// `sig` with a body that calls the helper trait's version.
-    fn delegate_fn(
-        &self,
-        sig: &Signature,
-        args: &[&Ident],
-    ) -> TokenStream {
-        let helper_fn = self.helper_item(&sig.ident);
-
-        quote! {
-            #sig {
-                #helper_fn(self, #(#args),*)
+impl ToTokens for Delegation<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self.item {
+            GroupTraitItem::Fn {
+                method: TraitItemFn { sig, .. },
+                args,
+            } => {
+                let helper_fn = self.helper_item(&sig.ident);
+                tokens.extend(quote! {
+                    #sig {
+                        #helper_fn(self, #(#args),*)
+                    }
+                });
             }
+            GroupTraitItem::Type(TraitItemType {
+                ident,
+                generics,
+                ..
+            }) => {
+                let helper_type = self.helper_item(ident);
+                let args = generics.to_arguments();
+                let where_clause = &generics.where_clause;
+                tokens.extend(quote! {
+                    type #ident #generics = #helper_type #args #where_clause;
+                });
+            }
+            GroupTraitItem::Const(TraitItemConst {
+                ident, ty, ..
+            }) => {
+                let helper_const = self.helper_item(ident);
+                tokens.extend(quote!(const #ident: #ty = #helper_const;));
+            }
+            GroupTraitItem::Other(_) => {}
         }
     }
+}
 
-    /// `type Ref<'a>: Bound where Self: 'a;` -> `type Ref<'a> = <I as
-    /// AHelper<..>>::Ref<'a> where Self: 'a;`
-    fn delegate_type(&self, ty: &TraitItemType) -> TokenStream {
-        let TraitItemType {
-            ident, generics, ..
-        } = ty;
-        let helper_type = self.helper_item(ident);
-        let args = generics.to_arguments();
-        let where_clause = &generics.where_clause;
-
-        quote!(type #ident #generics = #helper_type #args #where_clause;)
-    }
-
-    /// `const N: usize;` -> `const N: usize = <I as AHelper<..>>::N;`
-    fn delegate_const(&self, constant: &TraitItemConst) -> TokenStream {
-        let TraitItemConst { ident, ty, .. } = constant;
-        let helper_const = self.helper_item(ident);
-
-        quote!(const #ident: #ty = #helper_const;)
-    }
-
+impl<'a> Delegation<'a> {
     /// `item` -> `<I as AHelper<..>>::item`
-    fn helper_item<'a>(&'a self, item: &'a Ident) -> HelperItem<'a> {
+    fn helper_item(&self, item: &'a Ident) -> HelperItem<'a> {
         HelperItem {
-            helper_bound: &self.helper_bound,
+            helper_bound: self.helper_bound,
             item,
         }
     }
