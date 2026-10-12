@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{
     AssocType, Ident, ItemImpl, Path, PathSegment, Token, WherePredicate,
     parse::{Parse, ParseStream},
@@ -64,7 +64,9 @@ impl<'ast> GroupImpl<'ast> {
             state,
         })
     }
+}
 
+impl ToTokens for GroupImpl<'_> {
     /// `impl A<'a, X> for T` -> `impl __a_helper_mod::AHelper<'a, Group,
     /// X> for T where T::State: __a_helper_mod::Member<Group>`
     ///
@@ -76,7 +78,7 @@ impl<'ast> GroupImpl<'ast> {
     /// The blanket impl gives `Self` the trait's items too, so each
     /// `Self::item` path to a const or fn the impl defines is qualified
     /// with the helper trait.
-    pub fn create_group_impl(&self) -> TokenStream {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut group_impl = self.inner_impl.clone();
         let bindings =
             group_impl.generics.take_assoc_type_bindings(self.state);
@@ -98,13 +100,15 @@ impl<'ast> GroupImpl<'ast> {
             self.binding_error(binding).into_compile_error()
         });
 
-        quote! {
+        tokens.extend(quote! {
             #group_impl
 
             #(#binding_errors)*
-        }
+        });
     }
+}
 
+impl GroupImpl<'_> {
     /// `a::A<'a, X>` -> `a::__a_helper_mod::AHelper<'a, Group, X>`
     fn helper_trait_path(&self, trait_path: &Path) -> Path {
         let group = self.group_name;
