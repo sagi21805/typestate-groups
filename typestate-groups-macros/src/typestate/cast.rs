@@ -1,10 +1,10 @@
 //! The `CastableState` impls `unsafe_transmute = true` derives.
 
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::{
-    Generics, WherePredicate, parse_quote, parse_quote_spanned,
-    spanned::Spanned as _,
+    Generics, Ident, Path, WherePredicate, parse_quote,
+    parse_quote_spanned, spanned::Spanned as _,
 };
 
 use super::{TypeState, fields::FieldShape};
@@ -186,22 +186,22 @@ impl CastBy {
     /// The `typestate_groups::Access` a field held by value gets.
     ///
     /// `Ref -> ::typestate_groups::ReadShared`
-    fn field_access(self) -> TokenStream {
+    fn field_access(self) -> Path {
         match self {
-            CastBy::Value => quote!(::typestate_groups::Read),
-            CastBy::Ref => quote!(::typestate_groups::ReadShared),
-            CastBy::Mut => quote!(::typestate_groups::ReadWrite),
+            CastBy::Value => parse_quote!(::typestate_groups::Read),
+            CastBy::Ref => parse_quote!(::typestate_groups::ReadShared),
+            CastBy::Mut => parse_quote!(::typestate_groups::ReadWrite),
         }
     }
 
     /// The `Indirect` associated type naming a pointee's access.
     ///
     /// `Ref -> CastStateRef`
-    fn pointee_access(self) -> TokenStream {
+    fn pointee_access(self) -> Ident {
         match self {
-            CastBy::Value => quote!(CastState),
-            CastBy::Ref => quote!(CastStateRef),
-            CastBy::Mut => quote!(CastStateMut),
+            CastBy::Value => format_ident!("CastState"),
+            CastBy::Ref => format_ident!("CastStateRef"),
+            CastBy::Mut => format_ident!("CastStateMut"),
         }
     }
 }
