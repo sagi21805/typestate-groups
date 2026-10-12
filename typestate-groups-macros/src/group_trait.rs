@@ -90,62 +90,18 @@ impl<'ast> GroupTrait<'ast> {
             item_trait: self.item_trait,
             state_types: &self.args.ty.path,
         };
-        let blanket_impl = self.blanket_impl();
+        let blanket_impl = BlanketImpl {
+            item_trait: self.item_trait,
+            state_types: &self.args.ty,
+            helper_bound: &self.helper_bound,
+            items: &self.items,
+        };
 
         quote! {
             #public_trait
             #helper_mod
             #blanket_impl
         }
-    }
-
-    /// The trait implemented for every state type whose group has a helper
-    /// impl, forwarding each item to that impl.
-    fn blanket_impl(&self) -> TokenStream {
-        let ItemTrait {
-            ident, generics, ..
-        } = self.item_trait;
-        let implementor = crate::naming::implementor_ident();
-        let delegations = self.items.iter().map(|item| Delegation {
-            item,
-            helper_bound: &self.helper_bound,
-        });
-
-        let blanket_generics = self.blanket_impl_generics();
-        let (impl_generics, _, where_clause) =
-            blanket_generics.split_for_impl();
-        let (_, ty_generics, _) = generics.split_for_impl();
-
-        quote! {
-            impl #impl_generics #ident #ty_generics for #implementor #where_clause {
-                #(#delegations)*
-            }
-        }
-    }
-
-    /// `<T>` -> `<T, I> where I: WithState, <I as WithState>::State:
-    /// Meta, I: DescribeHelper<..>`
-    fn blanket_impl_generics(&self) -> Generics {
-        let state_types = &self.args.ty;
-        let helper_bound = &self.helper_bound;
-        let implementor = crate::naming::implementor_ident();
-
-        let mut generics = self.item_trait.generics.clone();
-        generics.params.push(GenericParam::Type(TypeParam::from(
-            implementor.clone(),
-        )));
-        let implementor_bounds: [WherePredicate; 3] = [
-            parse_quote!(#implementor: ::typestate_groups::WithState),
-            parse_quote! {
-                <#implementor as ::typestate_groups::WithState>::State: #state_types
-            },
-            parse_quote!(#implementor: #helper_bound),
-        ];
-        generics
-            .make_where_clause()
-            .predicates
-            .extend(implementor_bounds);
-        generics
     }
 }
 
@@ -233,6 +189,69 @@ impl ToTokens for HelperMod<'_> {
                 impl<#group: #marker_trait, T: #member_trait<#group>> #member_ident<#group> for T {}
             }
         });
+    }
+}
+
+/// The trait implemented for every state type whose group has a helper
+/// impl, forwarding each item to that impl.
+struct BlanketImpl<'a> {
+    item_trait: &'a ItemTrait,
+    state_types: &'a TypePath,
+    helper_bound: &'a Path,
+    items: &'a [GroupTraitItem<'a>],
+}
+
+impl ToTokens for BlanketImpl<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ItemTrait {
+            ident, generics, ..
+        } = self.item_trait;
+        let implementor = crate::naming::implementor_ident();
+        let delegations = self.items.iter().map(|item| Delegation {
+            item,
+            helper_bound: self.helper_bound,
+        });
+
+        let blanket_generics = self.generics();
+        let (impl_generics, _, where_clause) =
+            blanket_generics.split_for_impl();
+        let (_, ty_generics, _) = generics.split_for_impl();
+
+        tokens.extend(quote! {
+            impl #impl_generics #ident #ty_generics for #implementor #where_clause {
+                #(#delegations)*
+            }
+        });
+    }
+}
+
+impl BlanketImpl<'_> {
+    /// `<T>` -> `<T, I> where I: WithState, <I as WithState>::State:
+    /// Meta, I: DescribeHelper<..>`
+    fn generics(&self) -> Generics {
+        let BlanketImpl {
+            state_types,
+            helper_bound,
+            ..
+        } = self;
+        let implementor = crate::naming::implementor_ident();
+
+        let mut generics = self.item_trait.generics.clone();
+        generics.params.push(GenericParam::Type(TypeParam::from(
+            implementor.clone(),
+        )));
+        let implementor_bounds: [WherePredicate; 3] = [
+            parse_quote!(#implementor: ::typestate_groups::WithState),
+            parse_quote! {
+                <#implementor as ::typestate_groups::WithState>::State: #state_types
+            },
+            parse_quote!(#implementor: #helper_bound),
+        ];
+        generics
+            .make_where_clause()
+            .predicates
+            .extend(implementor_bounds);
+        generics
     }
 }
 
