@@ -9,7 +9,7 @@ mod item_struct;
 mod transmute;
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{Generics, Ident, ItemStruct, Type, TypeParam, parse_quote};
 
 pub(crate) use self::args::TypeStateArgs;
@@ -101,7 +101,7 @@ impl TypeState {
     /// The struct followed by every impl `#[typestate]` derives for it.
     pub(crate) fn generate_typestate_impls(&self) -> TokenStream {
         let item_struct = &self.item_struct;
-        let with_state_impl = self.with_state_impl();
+        let with_state_impl = WithStateImpl { typestate: self };
         let restate_impl = self.restate_impl();
         let transmute_impls = match &self.transmute {
             Transmute::On(align) => {
@@ -125,19 +125,6 @@ impl TypeState {
             #restate_impl
 
             #transmute_impls
-        }
-    }
-
-    fn with_state_impl(&self) -> TokenStream {
-        let struct_ident = &self.item_struct.ident;
-        let state = &self.state;
-        let (impl_generics, ty_generics, where_clause) =
-            self.item_struct.generics.split_for_impl();
-
-        quote! {
-            impl #impl_generics ::typestate_groups::WithState for #struct_ident #ty_generics #where_clause {
-                type State = #state;
-            }
         }
     }
 
@@ -165,5 +152,27 @@ impl TypeState {
     /// `NonNull<S::Value>` -> `NonNull<S2::Value>`
     fn in_target_state(&self, ty: &Type) -> Type {
         ty.renamed(&self.state, &self.target_state.ident)
+    }
+}
+
+/// `WithState` for `Struct<S>`, with `S` as its state.
+struct WithStateImpl<'a> {
+    typestate: &'a TypeState,
+}
+
+impl ToTokens for WithStateImpl<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let TypeState {
+            item_struct, state, ..
+        } = self.typestate;
+        let struct_ident = &item_struct.ident;
+        let (impl_generics, ty_generics, where_clause) =
+            item_struct.generics.split_for_impl();
+
+        tokens.extend(quote! {
+            impl #impl_generics ::typestate_groups::WithState for #struct_ident #ty_generics #where_clause {
+                type State = #state;
+            }
+        });
     }
 }
