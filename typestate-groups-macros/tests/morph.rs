@@ -170,3 +170,65 @@ fn concrete_impl_keeps_other_generics() {
     let big = small.morph::<Big>();
     assert_eq!((big.head, big.value, big.tail), (1, 4, "t"));
 }
+
+// --- `morph_mut` converts where the value lies ---
+
+mod in_place {
+    use typestate_groups::MorphFrom;
+    use typestate_groups_macros::{group, state, state_types, typestate};
+
+    #[state_types]
+    pub trait Count {
+        type Total;
+    }
+
+    #[state]
+    pub struct Open;
+    #[state]
+    pub struct Closed;
+
+    #[group(OpenGroup)]
+    impl Count for (Open,) {
+        #[size(4)]
+        type Total = u32;
+    }
+
+    #[group(ClosedGroup)]
+    impl Count for (Closed,) {
+        #[size(4)]
+        type Total = i32;
+    }
+
+    #[typestate(unsafe_transmute = true)]
+    pub struct Tally<S: Count> {
+        pub total: S::Total,
+        pub id: u16,
+    }
+
+    impl MorphFrom<Tally<Open>> for Tally<Closed> {
+        fn morph_from(src: Tally<Open>) -> Self {
+            Tally {
+                total: -(src.total as i32),
+                id: src.id + 1,
+            }
+        }
+    }
+}
+
+#[test]
+fn morph_mut_converts_in_place_for_the_owner() {
+    use in_place::{Closed, Open, Tally};
+    use typestate_groups::Isomorphic;
+
+    fn close(tally: &mut Tally<Open>) -> &mut Tally<Closed> {
+        tally.morph_mut::<Closed>()
+    }
+
+    let mut tally = Tally::<Open> { total: 3, id: 1 };
+    let closed = close(&mut tally);
+    assert_eq!((closed.total, closed.id), (-3, 2));
+
+    closed.total = -4;
+    let seen = tally.cast_state_ref::<Closed>();
+    assert_eq!((seen.total, seen.id), (-4, 2));
+}

@@ -70,3 +70,81 @@ fn group_sets_every_state_in_the_tuple() {
     accepts_group(states::Solo);
     accepts_group(states::Empty);
 }
+
+mod roles {
+    use typestate_groups_macros::{
+        group, group_impl, group_trait, state, state_types, typestate,
+    };
+
+    #[state_types]
+    pub trait Meta {
+        type Value;
+    }
+
+    #[state_types]
+    pub trait Role {}
+
+    #[state]
+    pub struct Head;
+    #[state]
+    pub struct Node;
+
+    #[group(Word)]
+    impl Meta for (Head, Node) {
+        type Value = u32;
+    }
+
+    #[group(HeadRole)]
+    impl Role for (Head,) {}
+
+    #[group(NodeRole)]
+    impl Role for (Node,) {}
+
+    #[typestate]
+    pub struct Link<S: Meta> {
+        pub value: S::Value,
+    }
+
+    #[group_trait(by = Role)]
+    pub trait Position {
+        fn position(&self) -> &'static str;
+    }
+
+    #[group_impl(HeadRole)]
+    impl<S: Meta> Position for Link<S> {
+        fn position(&self) -> &'static str {
+            "head"
+        }
+    }
+
+    #[group_impl(NodeRole)]
+    impl<S: Meta> Position for Link<S> {
+        fn position(&self) -> &'static str {
+            "node"
+        }
+    }
+
+    #[group_trait(by = Meta)]
+    pub trait Lead {
+        fn lead(&self) -> u32;
+    }
+
+    #[group_impl(Word)]
+    impl<S: Meta + RoleGroupMember<HeadRole>> Lead for Link<S> {
+        fn lead(&self) -> u32 {
+            self.value
+        }
+    }
+}
+
+#[test]
+fn tag_only_groups_dispatch_and_bound() {
+    use roles::{Head, Lead, Link, Node, Position};
+
+    let head = Link::<Head> { value: 7 };
+    let node = Link::<Node> { value: 8 };
+
+    assert_eq!((head.position(), node.position()), ("head", "node"));
+    assert_eq!(head.lead(), 7);
+    accepts_group(roles::HeadRole);
+}

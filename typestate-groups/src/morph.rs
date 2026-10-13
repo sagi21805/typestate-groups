@@ -1,6 +1,6 @@
 //! By-value transitions between a container's states.
 
-use crate::{Restate, State, WithState};
+use crate::{ByMut, CastableState, Isomorphic, Restate, State, WithState};
 
 /// Builds `Self` from `Src`, the same container in another state.
 ///
@@ -129,6 +129,91 @@ pub trait Morphic: WithState + Sized {
     {
         TryMorphFrom::try_morph_from(self)
     }
+
+    /// Converts `self` into state `To` where it lies, through
+    /// [`MorphFrom`]. The value keeps its address, so pointers to it stay
+    /// valid.
+    ///
+    /// Compiles only when `self` casts into `To` through `&mut`, as
+    /// [`CastableState`] proves, because the owner reads the place as
+    /// `Self` again once the borrow ends.
+    ///
+    /// ```
+    /// use typestate_groups::{
+    ///     MorphFrom, Morphic, group, state, state_types, typestate,
+    /// };
+    ///
+    /// #[state_types]
+    /// trait Meta {
+    ///     type Value;
+    /// }
+    ///
+    /// #[state]
+    /// struct Unsigned;
+    /// #[state]
+    /// struct Signed;
+    ///
+    /// #[group(UnsignedGroup)]
+    /// impl Meta for (Unsigned,) {
+    ///     #[size(4)]
+    ///     type Value = u32;
+    /// }
+    ///
+    /// #[group(SignedGroup)]
+    /// impl Meta for (Signed,) {
+    ///     #[size(4)]
+    ///     type Value = i32;
+    /// }
+    ///
+    /// #[typestate(unsafe_transmute = true)]
+    /// struct Wrap<S: Meta> {
+    ///     value: S::Value,
+    /// }
+    ///
+    /// impl MorphFrom<Wrap<Unsigned>> for Wrap<Signed> {
+    ///     fn morph_from(src: Wrap<Unsigned>) -> Self {
+    ///         Wrap {
+    ///             value: -(src.value as i32),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let mut unsigned = Wrap::<Unsigned> { value: 5 };
+    /// let address = &raw const unsigned as usize;
+    /// let signed = unsigned.morph_mut::<Signed>();
+    /// assert_eq!(signed.value, -5);
+    /// assert_eq!(&raw const *signed as usize, address);
+    /// ```
+    fn morph_mut<To: State>(
+        &mut self,
+    ) -> &mut <Self as Restate<To>>::Target
+    where
+        Self: CastableState<To, ByMut>,
+        <Self as Restate<To>>::Target: MorphFrom<Self>,
+    {
+        // SAFETY: `self` is valid, and the guard below keeps the copy
+        // and the place from both being dropped.
+        let src = unsafe { core::ptr::read(self) };
+        let guard = AbortOnUnwind;
+        let target = MorphFrom::morph_from(src);
+        core::mem::forget(guard);
+
+        let place = self.cast_state_mut::<To>();
+        // `src` moved out of the place, so its old bits are forgotten
+        // instead of dropped.
+        core::mem::forget(core::mem::replace(place, target));
+        place
+    }
 }
 
 impl<T: WithState> Morphic for T {}
+
+/// Aborts through a panic during unwinding when dropped, so
+/// [`Morphic::morph_mut`] never leaves a moved-out value in place.
+struct AbortOnUnwind;
+
+impl Drop for AbortOnUnwind {
+    fn drop(&mut self) {
+        panic!("`MorphFrom::morph_from` panicked inside `morph_mut`");
+    }
+}
