@@ -86,6 +86,10 @@ Each step below adds to the example above.
 
 `Frame<Sampled>` holds a `u32` and `Frame<Calibrated>` holds an `f32`.
 
+A `#[state_types]` trait may declare no types. Its groups then only tag
+states, such as `#[group(Heads)] impl Role for (FreeHead, FullHead) {}`,
+for a `#[group_impl]` or a `RoleGroupMember<Heads>` bound to select.
+
 ### 2. One impl per group
 
 `#[group_trait(by = Stage)]` declares a trait that you implement once per
@@ -193,6 +197,27 @@ bit pattern valid). Casting a `u8` into a `bool` fails with
 When a type is valid only for some bit patterns, such as `u32` into
 `char`, call `unsafe { transmute_state() }` and run `cargo miri test` on
 the code that calls it.
+
+To change the data while the container stays where it is, write a
+`MorphFrom` impl and call `morph_mut`. Pointers to the container stay
+valid, which matters for nodes of an intrusive list:
+
+```rust,ignore
+impl MorphFrom<Frame<Filtered>> for Frame<Centered> {
+    fn morph_from(src: Frame<Filtered>) -> Self {
+        Frame {
+            sensor: src.sensor,
+            sample: src.sample as i32 - 2048,
+        }
+    }
+}
+
+let mut frame = Frame::<Filtered> { sensor: 7, sample: 2047 };
+assert_eq!(frame.morph_mut::<Centered>().sample, -1);
+```
+
+`morph_mut` needs `cast_state_mut` to compile, because the owner reads
+the container in its old state once the borrow ends.
 
 ### 5. Pointer fields
 

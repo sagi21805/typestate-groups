@@ -47,9 +47,3 @@ error: expected integer literal
    |
 69 |     #[size("eight")]
    |            ^^^^^^^
-
-error: add an associated type to `NoAssocType`, such as `type Value;`, for its groups to set
-  --> tests/ui/group.rs:74:7
-   |
-74 | trait NoAssocType {
-   |       ^^^^^^^^^^^

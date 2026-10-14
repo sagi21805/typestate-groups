@@ -4,13 +4,15 @@ use syn::{ItemTrait, TraitItem, TraitItemType, parse_quote};
 
 pub struct StateTypes<'ast> {
     inner: &'ast ItemTrait,
-    /// The trait's associated types, one or more.
+    /// The trait's associated types, possibly none.
     types: Vec<&'ast TraitItemType>,
 }
 
 impl<'ast> StateTypes<'ast> {
-    pub fn new(inner: &'ast ItemTrait) -> syn::Result<StateTypes<'ast>> {
-        let types: Vec<&TraitItemType> = inner
+    /// Reads the trait's associated types. A trait without any tags its
+    /// states into groups that set no types.
+    pub fn new(inner: &'ast ItemTrait) -> StateTypes<'ast> {
+        let types = inner
             .items
             .iter()
             .filter_map(|item| match item {
@@ -19,18 +21,7 @@ impl<'ast> StateTypes<'ast> {
             })
             .collect();
 
-        if types.is_empty() {
-            return Err(syn::Error::new_spanned(
-                &inner.ident,
-                format!(
-                    "add an associated type to `{}`, such as `type \
-                     Value;`, for its groups to set",
-                    inner.ident
-                ),
-            ));
-        }
-
-        Ok(StateTypes { inner, types })
+        StateTypes { inner, types }
     }
 }
 

@@ -20,7 +20,8 @@ mod state_types;
 mod syn_ext;
 mod typestate;
 
-/// Declares a trait whose associated types group states.
+/// Declares a trait whose associated types group states. A trait without
+/// associated types tags its states into groups that set no types.
 ///
 /// ```
 /// use typestate_groups::{group, state, state_types};
@@ -53,10 +54,7 @@ mod typestate;
 pub fn state_types(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_trait = parse_macro_input!(item as ItemTrait);
 
-    StateTypes::new(&item_trait)
-        .map(ToTokens::into_token_stream)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
+    StateTypes::new(&item_trait).into_token_stream().into()
 }
 
 /// Declares a group and implements a `#[state_types]` trait for its

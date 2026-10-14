@@ -70,9 +70,4 @@ impl Meta for (D,) {
     type Value = u64;
 }
 
-#[state_types]
-trait NoAssocType {
-    fn describe(&self) -> String;
-}
-
 fn main() {}
