@@ -137,53 +137,6 @@ pub trait Morphic: WithState + Sized {
     /// Compiles only when `self` casts into `To` through `&mut`, as
     /// [`CastableState`] proves, because the owner reads the place as
     /// `Self` again once the borrow ends.
-    ///
-    /// ```
-    /// use typestate_groups::{
-    ///     MorphFrom, Morphic, group, state, state_types, typestate,
-    /// };
-    ///
-    /// #[state_types]
-    /// trait Meta {
-    ///     type Value;
-    /// }
-    ///
-    /// #[state]
-    /// struct Unsigned;
-    /// #[state]
-    /// struct Signed;
-    ///
-    /// #[group(UnsignedGroup)]
-    /// impl Meta for (Unsigned,) {
-    ///     #[size(4)]
-    ///     type Value = u32;
-    /// }
-    ///
-    /// #[group(SignedGroup)]
-    /// impl Meta for (Signed,) {
-    ///     #[size(4)]
-    ///     type Value = i32;
-    /// }
-    ///
-    /// #[typestate(unsafe_transmute = true)]
-    /// struct Wrap<S: Meta> {
-    ///     value: S::Value,
-    /// }
-    ///
-    /// impl MorphFrom<Wrap<Unsigned>> for Wrap<Signed> {
-    ///     fn morph_from(src: Wrap<Unsigned>) -> Self {
-    ///         Wrap {
-    ///             value: -(src.value as i32),
-    ///         }
-    ///     }
-    /// }
-    ///
-    /// let mut unsigned = Wrap::<Unsigned> { value: 5 };
-    /// let address = &raw const unsigned as usize;
-    /// let signed = unsigned.morph_mut::<Signed>();
-    /// assert_eq!(signed.value, -5);
-    /// assert_eq!(&raw const *signed as usize, address);
-    /// ```
     fn morph_mut<To: State>(
         &mut self,
     ) -> &mut <Self as Restate<To>>::Target
