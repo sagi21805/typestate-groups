@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::ToTokens;
+use quote::quote;
 use syn::{Ident, ItemImpl, ItemStruct, ItemTrait, parse_macro_input};
 
 use crate::{
@@ -54,7 +54,9 @@ mod typestate;
 pub fn state_types(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_trait = parse_macro_input!(item as ItemTrait);
 
-    StateTypes::new(&item_trait).into_token_stream().into()
+    let state_types = StateTypes::new(&item_trait);
+
+    quote!(#state_types).into()
 }
 
 /// Declares a group and implements a `#[state_types]` trait for its
@@ -86,10 +88,11 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_impl = parse_macro_input!(item as ItemImpl);
     let name = parse_macro_input!(attr as Ident);
 
-    Group::new(&item_impl, &name)
-        .map(ToTokens::into_token_stream)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
+    match Group::new(&item_impl, &name) {
+        Ok(group) => quote!(#group),
+        Err(err) => err.into_compile_error(),
+    }
+    .into()
 }
 
 /// Implements a `#[group_trait]` trait for types whose state is in the
@@ -102,10 +105,11 @@ pub fn group_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_impl = parse_macro_input!(item as ItemImpl);
     let args = parse_macro_input!(attr as GroupImplArgs);
 
-    GroupImpl::new(&args, &item_impl)
-        .map(ToTokens::into_token_stream)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
+    match GroupImpl::new(&args, &item_impl) {
+        Ok(group_impl) => quote!(#group_impl),
+        Err(err) => err.into_compile_error(),
+    }
+    .into()
 }
 
 /// Marks a generic struct as a typestate container. Options:
@@ -166,10 +170,11 @@ pub fn typestate(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(item as ItemStruct);
     let args = parse_macro_input!(attr as TypeStateArgs);
 
-    TypeState::new(args, item_struct)
-        .map(ToTokens::into_token_stream)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
+    match TypeState::new(args, item_struct) {
+        Ok(typestate) => quote!(#typestate),
+        Err(err) => err.into_compile_error(),
+    }
+    .into()
 }
 
 /// Implements `typestate_groups::State` for a struct.
@@ -184,8 +189,9 @@ pub fn typestate(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(item as ItemStruct);
+    let state = State::new(&item_struct);
 
-    State::new(&item_struct).into_token_stream().into()
+    quote!(#state).into()
 }
 
 /// Declares a trait each group implements with `#[group_impl]`.
@@ -253,8 +259,9 @@ pub fn group_trait(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item_trait = parse_macro_input!(item as ItemTrait);
     let args = parse_macro_input!(attr as GroupTraitArgs);
 
-    GroupTrait::new(&args, &item_trait)
-        .map(ToTokens::into_token_stream)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
+    match GroupTrait::new(&args, &item_trait) {
+        Ok(group_trait) => quote!(#group_trait),
+        Err(err) => err.into_compile_error(),
+    }
+    .into()
 }
