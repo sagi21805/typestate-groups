@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.3.0...typestate-groups-v0.3.1) - 2026-10-14
+
+### Other
+
+- remove unnecessary doc example
+- Allow tag-only state_types traits and add morph_mut
+- support generic parameters on group traits
+- match on the expander and emit it with quote! in the macro entry points
+- order group_trait.rs top-down from GroupTrait to its emitters
+- implement ToTokens for StateTypes in place of create_group_marker
+- implement ToTokens for Group in place of generate_group_impl
+- emit layout items through a TypeLayout type
+- emit #[size(N)] assertions through a SizeAssert type
+- strip #[size(N)] while emitting through a StrippedItem type instead of cloning every item
+- implement ToTokens for GroupImpl in place of create_group_impl
+- implement ToTokens for GroupTrait in place of generate_group_trait
+- emit the blanket impl through a BlanketImpl type
+- emit the helper module through a HelperMod type
+- emit the public trait through a PublicTrait type
+- emit forwarded trait items through a Delegation type
+- emit public trait items through a Declaration type
+- validate group trait items once into a GroupTraitItem type
+- emit helper trait paths through a HelperItem type
+- merge zst_value into the is_zst predicate
+- return Path and Ident from the CastBy accessors
+- return the target type as a syn Type
+- implement ToTokens for State in place of generate_state_impl
+- implement ToTokens for TypeState in place of generate_typestate_impls
+- emit CastableState through a CastableStateImpl type per CastBy
+- emit POINTEE_CHECK through a PointeeCheck type
+- emit TransmutableState through a TransmutableStateImpl type
+- emit LAYOUT_CHECK through a LayoutCheck type
+- emit Restate through a RestateImpl type
+- emit WithState through a WithStateImpl type
+- final refactorization before merge, mainly funciton splitting and minor optimizations.
+- report every binding on the group impl state and keep the impl
+
 ## [0.3.0](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.2.2...typestate-groups-v0.3.0) - 2026-10-06
 
 ### Fixed
