@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.3.1...typestate-groups-v0.3.2) - 2026-10-17
+
+### Other
+
+- Add the group's layouts to its marker so states of one group cast into each other without a CastableState bound
+- Fix group impls losing their group's associated types when their where-clause mentions the typestate
+
 ## [0.3.1](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.3.0...typestate-groups-v0.3.1) - 2026-10-14
 
 ### Other
