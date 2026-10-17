@@ -198,6 +198,17 @@ When a type is valid only for some bit patterns, such as `u32` into
 `char`, call `unsafe { transmute_state() }` and run `cargo miri test` on
 the code that calls it.
 
+States in one group share their layouts, so a `#[group_impl]` casts into
+any state of its own group without a `CastableState` bound. A generic
+target only needs to be a member of the same group:
+
+```rust,ignore
+#[group_impl(Counts, state = S)]
+impl<S: Stage, To: StageGroupMember<S::Marker>> Retag<To> for Frame<S> {
+    fn retagged(&mut self) -> &mut Frame<To> { self.cast_state_mut::<To>() }
+}
+```
+
 To change the data while the container stays where it is, write a
 `MorphFrom` impl and call `morph_mut`. Pointers to the container stay
 valid, which matters for nodes of an intrusive list:

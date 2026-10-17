@@ -5,7 +5,7 @@
     reason = "a snake_case trait checks the generated helper names"
 )]
 
-use typestate_groups::{State, WithState};
+use typestate_groups::{Isomorphic, State, WithState};
 use typestate_groups_macros::{
     group, group_impl, group_trait, state, state_types, typestate,
 };
@@ -156,4 +156,46 @@ where
 #[test]
 fn group_impl_keeps_group_types_under_a_with_state_bound() {
     assert_eq!(Wrap::<A> { value: 1, extra: 2 }.bumped(), 2);
+}
+
+#[state_types]
+trait Slot {
+    type Bits;
+}
+
+#[state]
+struct Empty;
+#[state]
+struct Taken;
+
+#[group(Slots)]
+impl Slot for (Empty, Taken) {
+    #[size(4)]
+    type Bits = u32;
+}
+
+#[typestate(unsafe_transmute = true)]
+struct Slotted<S: Slot> {
+    bits: S::Bits,
+}
+
+#[group_trait(by = Slot)]
+trait Retag<To: Slot> {
+    fn retagged(&mut self) -> &mut Slotted<To>;
+}
+
+// No `CastableState` bound, because `To` sharing the group of `S` already
+// proves both states have the same layout.
+#[group_impl(Slots, state = S)]
+impl<S: Slot, To: SlotGroupMember<S::Marker>> Retag<To> for Slotted<S> {
+    fn retagged(&mut self) -> &mut Slotted<To> {
+        self.cast_state_mut::<To>()
+    }
+}
+
+#[test]
+fn group_impl_casts_to_a_state_of_its_group_without_a_bound() {
+    let mut empty = Slotted::<Empty> { bits: 7 };
+    let taken: &mut Slotted<Taken> = empty.retagged();
+    assert_eq!(taken.bits, 7);
 }
