@@ -5,7 +5,7 @@
     reason = "a snake_case trait checks the generated helper names"
 )]
 
-use typestate_groups::State;
+use typestate_groups::{State, WithState};
 use typestate_groups_macros::{
     group, group_impl, group_trait, state, state_types, typestate,
 };
@@ -133,4 +133,27 @@ fn group_impl_keeps_bindings_on_other_parameters() {
         extra: [2, 3].into_iter(),
     };
     assert_eq!(pair.total(), 6);
+}
+
+#[group_trait(by = Meta)]
+trait Bump {
+    fn bumped(&self) -> u32;
+}
+
+// A `where` clause that implies `Wrap<S>: WithState`, as a
+// `CastableState` bound does through its supertraits, still leaves
+// `S::Value` as `u32`.
+#[group_impl(Numbers)]
+impl<S: Meta> Bump for Wrap<S>
+where
+    Wrap<S>: WithState,
+{
+    fn bumped(&self) -> u32 {
+        self.value + 1
+    }
+}
+
+#[test]
+fn group_impl_keeps_group_types_under_a_with_state_bound() {
+    assert_eq!(Wrap::<A> { value: 1, extra: 2 }.bumped(), 2);
 }
