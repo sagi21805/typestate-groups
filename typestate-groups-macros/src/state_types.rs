@@ -37,12 +37,28 @@ impl ToTokens for StateTypes<'_> {
     ///     type B;
     ///     type __TypestateGroupsLayoutA;
     ///     type __TypestateGroupsLayoutB;
-    ///     type Marker: MetaGroupMarker<A = Self::A, B = Self::B>;
+    ///     type Marker: MetaGroupMarker<
+    ///         A = Self::A, B = Self::B,
+    ///         __TypestateGroupsLayoutA = Self::__TypestateGroupsLayoutA,
+    ///         __TypestateGroupsLayoutB = Self::__TypestateGroupsLayoutB,
+    ///     >;
     /// }
-    /// trait MetaGroupMarker { type A; type B; }
-    /// trait MetaGroupMember<G: MetaGroupMarker>:
-    ///     Meta<Marker = G, A = G::A, B = G::B> {}
+    /// trait MetaGroupMarker {
+    ///     type A;
+    ///     type B;
+    ///     type __TypestateGroupsLayoutA;
+    ///     type __TypestateGroupsLayoutB;
+    /// }
+    /// trait MetaGroupMember<G: MetaGroupMarker>: Meta<
+    ///     Marker = G, A = G::A, B = G::B,
+    ///     __TypestateGroupsLayoutA = G::__TypestateGroupsLayoutA,
+    ///     __TypestateGroupsLayoutB = G::__TypestateGroupsLayoutB,
+    /// > {}
     /// ```
+    ///
+    /// The marker carries the layouts too, so two members of one group
+    /// share them and cast into each other without a `CastableState`
+    /// bound.
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let vis = &self.inner.vis;
         let trait_ident = &self.inner.ident;
@@ -50,18 +66,27 @@ impl ToTokens for StateTypes<'_> {
         let member_name = crate::naming::group_member_ident(trait_ident);
         let group = crate::naming::group_param_ident();
         let types = &self.types;
-        let assocs: Vec<_> = types.iter().map(|ty| &ty.ident).collect();
-
-        let mut original = self.inner.clone();
-        original
-            .items
-            .extend(assocs.iter().map(|assoc| -> TraitItem {
-                let layout = crate::naming::layout_assoc_ident(assoc);
+        let assocs: Vec<_> =
+            types
+                .iter()
+                .map(|ty| ty.ident.clone())
+                .chain(types.iter().map(|ty| {
+                    crate::naming::layout_assoc_ident(&ty.ident)
+                }))
+                .collect();
+        let layout_types: Vec<TraitItem> = types
+            .iter()
+            .map(|ty| {
+                let layout = crate::naming::layout_assoc_ident(&ty.ident);
                 parse_quote! {
                     #[doc(hidden)]
                     type #layout: ::typestate_groups::TypeLayout;
                 }
-            }));
+            })
+            .collect();
+
+        let mut original = self.inner.clone();
+        original.items.extend(layout_types.iter().cloned());
         original.items.push(parse_quote! {
             type Marker: #marker_name<#(#assocs = Self::#assocs),*>;
         });
@@ -78,6 +103,7 @@ impl ToTokens for StateTypes<'_> {
 
             #vis trait #marker_name {
                 #(#types)*
+                #(#layout_types)*
             }
 
             #vis trait #member_name<#group: #marker_name>: #member_bound {}

@@ -67,8 +67,8 @@ impl<'ast> GroupImpl<'ast> {
 }
 
 impl ToTokens for GroupImpl<'_> {
-    /// `impl A<'a, X> for T` -> `impl __a_helper_mod::AHelper<'a, Group,
-    /// X> for T where T::State: __a_helper_mod::Member<Group>`
+    /// `impl<S> A<'a, X> for T<S>` -> `impl<S> __a_helper_mod::AHelper<'a,
+    /// Group, X> for T<S> where S: __a_helper_mod::Member<Group>`
     ///
     /// The group sets the state's associated types, so every `Assoc =
     /// Type` binding on the state becomes an error. The impl is still
@@ -131,8 +131,12 @@ impl GroupImpl<'_> {
         }
     }
 
-    /// `a::__a_helper_mod::AHelper<..>` -> `<Self as WithState>::State:
+    /// `a::__a_helper_mod::AHelper<..>` -> `S:
     /// a::__a_helper_mod::Member<Group>`
+    ///
+    /// The bound names the state parameter, not `<Self as
+    /// WithState>::State`, because a `where` clause implying `Self:
+    /// WithState` hides the impl that resolves that projection to `S`.
     fn member_bound(&self, helper_trait: &Path) -> WherePredicate {
         let group = self.group_name;
         let member_ident = crate::naming::helper_member_ident();
@@ -143,9 +147,8 @@ impl GroupImpl<'_> {
             .expect("a parsed trait path has at least one segment") =
             parse_quote!(#member_ident<#group>);
 
-        parse_quote! {
-            <Self as ::typestate_groups::WithState>::State: #member
-        }
+        let state = self.state;
+        parse_quote! { #state: #member }
     }
 
     /// The error for a binding on the state, which the group already sets

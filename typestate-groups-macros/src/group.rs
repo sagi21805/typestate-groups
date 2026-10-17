@@ -64,6 +64,7 @@ impl ToTokens for Group<'_> {
 
             impl #marker_trait for #group_name {
                 #(#types)*
+                #layout_tokens
             }
 
             #(
