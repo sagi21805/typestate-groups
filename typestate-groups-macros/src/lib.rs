@@ -99,6 +99,9 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// group. Name the state with `state = S` when the impl has several type
 /// parameters.
 ///
+/// For a trait grouped by several traits, name one group per trait, in
+/// any order: `#[group_impl(Meta = Numbers, Role = Heads, state = S)]`.
+///
 /// See [`macro@group_trait`] for an example.
 #[proc_macro_attribute]
 pub fn group_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -197,7 +200,8 @@ pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Declares a trait each group implements with `#[group_impl]`.
 ///
 /// The trait can declare methods, associated types and constants, and
-/// each group's impl sets its own.
+/// each group's impl sets its own. `by = (Meta, Role)` groups it by
+/// several traits, so each impl covers the states in one group of each.
 ///
 /// ```
 /// use typestate_groups::{
