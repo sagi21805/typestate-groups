@@ -1,0 +1,33 @@
+error: group by `Meta` once, and give each trait in `by` a different name
+  --> tests/ui/group_intersection_args.rs:43:27
+   |
+43 | #[group_trait(by = (Meta, Meta))]
+   |                           ^^^^
+
+error: name a trait to group by, such as `by = Meta` or `by = (Meta, Role)`
+  --> tests/ui/group_intersection_args.rs:46:1
+   |
+46 | #[group_trait(by = ())]
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `group_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: name the trait each group belongs to, such as `Meta = Numbers`, when the impl has more than one group
+  --> tests/ui/group_intersection_args.rs:54:14
+   |
+54 | #[group_impl(Numbers, Role = Heads)]
+   |              ^^^^^^^
+
+error: name one group for `Meta`
+  --> tests/ui/group_intersection_args.rs:61:30
+   |
+61 | #[group_impl(Meta = Numbers, Meta = Words)]
+   |                              ^^^^
+
+error: name the group, such as `#[group_impl(Numbers)]`
+  --> tests/ui/group_intersection_args.rs:68:1
+   |
+68 | #[group_impl()]
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `group_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
