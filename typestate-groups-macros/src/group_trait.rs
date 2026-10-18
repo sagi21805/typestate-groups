@@ -1,12 +1,14 @@
 use extend::ext;
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
     FnArg, GenericParam, Generics, Ident, ItemTrait, Pat, PatIdent,
     PatType, Path, Signature, Token, TraitItem, TraitItemConst,
-    TraitItemFn, TraitItemType, TypeParam, TypePath, WherePredicate,
+    TraitItemFn, TraitItemType, TypeParam, WherePredicate, parenthesized,
     parse::{Parse, ParseStream},
     parse_quote,
+    punctuated::Punctuated,
+    token,
 };
 
 use crate::syn_ext::{
@@ -15,10 +17,11 @@ use crate::syn_ext::{
 
 pub struct GroupTrait<'ast> {
     item_trait: &'ast ItemTrait,
-    /// `Meta` in `#[group_trait(by = Meta)]`.
-    state_types: &'ast TypePath,
+    /// `Meta` and `Role` in `#[group_trait(by = (Meta, Role))]`, ordered
+    /// by name.
+    keys: &'ast [Path],
     /// `__a_helper_mod::AHelper<'a, <<I as WithState>::State as
-    /// Trait>::Marker, T>`
+    /// Meta>::Marker, <<I as WithState>::State as Role>::Marker, T>`
     helper_bound: Path,
     items: Vec<GroupTraitItem<'ast>>,
 }
@@ -29,7 +32,7 @@ impl<'ast> GroupTrait<'ast> {
         args: &'ast GroupTraitArgs,
         item_trait: &'ast ItemTrait,
     ) -> syn::Result<GroupTrait<'ast>> {
-        let state_types = &args.ty;
+        let keys = &args.keys;
         let implementor = crate::naming::implementor_ident();
         let helper_ident =
             crate::naming::helper_trait_ident(&item_trait.ident);
@@ -37,9 +40,11 @@ impl<'ast> GroupTrait<'ast> {
             crate::naming::helper_mod_ident(&item_trait.ident);
 
         let mut helper_args = item_trait.generics.to_arguments();
-        helper_args.insert_after_lifetimes(parse_quote! {
-            <<#implementor as ::typestate_groups::WithState>::State as #state_types>::Marker
-        });
+        helper_args.insert_after_lifetimes(keys.iter().map(|key| {
+            parse_quote! {
+                <<#implementor as ::typestate_groups::WithState>::State as #key>::Marker
+            }
+        }));
 
         let items = item_trait
             .items
@@ -49,7 +54,7 @@ impl<'ast> GroupTrait<'ast> {
 
         Ok(GroupTrait {
             item_trait,
-            state_types,
+            keys,
             helper_bound: parse_quote!(
                 #helper_mod_ident::#helper_ident #helper_args
             ),
@@ -63,22 +68,28 @@ impl ToTokens for GroupTrait<'_> {
     /// helper impl of the state's group.
     ///
     /// ```ignore
-    /// #[group_trait(by = Meta)]
+    /// #[group_trait(by = (Role, Meta))]
     /// trait Describe<T>: Bound { type Out; fn describe(&self) -> T; }
     /// // ->
     /// trait Describe<T>: Bound { type Out; fn describe(&self) -> T; }
     /// mod __describe_helper_mod {
-    ///     trait DescribeHelper<G: MetaGroupMarker, T>: Bound {
+    ///     trait DescribeHelper<M: MetaGroupMarker, R: RoleGroupMarker, T>: Bound {
     ///         type Out;
     ///         fn describe(&self) -> T;
     ///     }
-    ///     trait Member<G: MetaGroupMarker>: MetaGroupMember<G> {}
+    ///     trait Member<M: MetaGroupMarker, R: RoleGroupMarker>:
+    ///         MetaGroupMember<M> + RoleGroupMember<R> {}
     /// }
     /// impl<T, I> Describe<T> for I
     /// where
     ///     I: WithState,
     ///     <I as WithState>::State: Meta,
-    ///     I: DescribeHelper<<<I as WithState>::State as Meta>::Marker, T>,
+    ///     <I as WithState>::State: Role,
+    ///     I: DescribeHelper<
+    ///         <<I as WithState>::State as Meta>::Marker,
+    ///         <<I as WithState>::State as Role>::Marker,
+    ///         T,
+    ///     >,
     /// {
     ///     type Out = <I as DescribeHelper<..>>::Out;
     ///     fn describe(&self) -> T { <I as DescribeHelper<..>>::describe(self) }
@@ -91,11 +102,11 @@ impl ToTokens for GroupTrait<'_> {
         };
         let helper_mod = HelperMod {
             item_trait: self.item_trait,
-            state_types: &self.state_types.path,
+            keys: self.keys,
         };
         let blanket_impl = BlanketImpl {
             item_trait: self.item_trait,
-            state_types: self.state_types,
+            keys: self.keys,
             helper_bound: &self.helper_bound,
             items: &self.items,
         };
@@ -207,6 +218,32 @@ impl Signature {
     }
 }
 
+#[ext(name = GroupKey)]
+impl Path {
+    /// The helper trait's parameter for a group of this trait.
+    ///
+    /// `a::Meta` -> `__TypestateGroupsMetaGroup: a::MetaGroupMarker`
+    fn group_param(&self) -> GenericParam {
+        let group = self.group_param_ident();
+        let marker =
+            self.with_last_ident(crate::naming::group_marker_ident);
+        parse_quote!(#group: #marker)
+    }
+
+    /// `a::Meta` -> `__TypestateGroupsMetaGroup`
+    fn group_param_ident(&self) -> Ident {
+        crate::naming::key_group_param_ident(self.last_ident())
+    }
+
+    /// `a::Meta` -> `a::MetaGroupMember<__TypestateGroupsMetaGroup>`
+    fn group_member_trait(&self) -> Path {
+        let group = self.group_param_ident();
+        let member =
+            self.with_last_ident(crate::naming::group_member_ident);
+        parse_quote!(#member<#group>)
+    }
+}
+
 /// The trait with its method bodies removed.
 struct PublicTrait<'a> {
     item_trait: &'a ItemTrait,
@@ -259,11 +296,12 @@ impl ToTokens for Declaration<'_> {
     }
 }
 
-/// The helper trait, with the group as its first type parameter, and
-/// `Member`, which every state in the group implements.
+/// The helper trait, with one group per key as its first type
+/// parameters, and `Member`, which every state in all those groups
+/// implements.
 struct HelperMod<'a> {
     item_trait: &'a ItemTrait,
-    state_types: &'a Path,
+    keys: &'a [Path],
 }
 
 impl ToTokens for HelperMod<'_> {
@@ -282,19 +320,15 @@ impl ToTokens for HelperMod<'_> {
         let helper_ident = crate::naming::helper_trait_ident(ident);
         let helper_mod_ident = crate::naming::helper_mod_ident(ident);
         let member_ident = crate::naming::helper_member_ident();
-        let group = crate::naming::group_param_ident();
 
-        let state_types = self.state_types;
-        let marker_trait =
-            state_types.with_last_ident(crate::naming::group_marker_ident);
-        let member_trait =
-            state_types.with_last_ident(crate::naming::group_member_ident);
+        let group_params: Vec<GenericParam> =
+            self.keys.iter().map(Path::group_param).collect();
+        let groups = self.keys.iter().map(Path::group_param_ident);
+        let member_traits: Vec<Path> =
+            self.keys.iter().map(Path::group_member_trait).collect();
 
         let mut helper_generics = generics.clone();
-        helper_generics.params.insert(
-            generics.lifetimes().count(),
-            parse_quote!(#group: #marker_trait),
-        );
+        helper_generics.insert_after_lifetimes(group_params.clone());
 
         tokens.extend(quote! {
             #[doc(hidden)]
@@ -306,9 +340,9 @@ impl ToTokens for HelperMod<'_> {
                     #(#items)*
                 }
 
-                pub trait #member_ident<#group: #marker_trait>: #member_trait<#group> {}
+                pub trait #member_ident<#(#group_params),*>: #(#member_traits)+* {}
 
-                impl<#group: #marker_trait, T: #member_trait<#group>> #member_ident<#group> for T {}
+                impl<#(#group_params,)* T: #(#member_traits)+*> #member_ident<#(#groups),*> for T {}
             }
         });
     }
@@ -318,7 +352,7 @@ impl ToTokens for HelperMod<'_> {
 /// impl, forwarding each item to that impl.
 struct BlanketImpl<'a> {
     item_trait: &'a ItemTrait,
-    state_types: &'a TypePath,
+    keys: &'a [Path],
     helper_bound: &'a Path,
     items: &'a [GroupTraitItem<'a>],
 }
@@ -349,12 +383,10 @@ impl ToTokens for BlanketImpl<'_> {
 
 impl BlanketImpl<'_> {
     /// `<T>` -> `<T, I> where I: WithState, <I as WithState>::State:
-    /// Meta, I: DescribeHelper<..>`
+    /// Meta, <I as WithState>::State: Role, I: DescribeHelper<..>`
     fn generics(&self) -> Generics {
         let BlanketImpl {
-            state_types,
-            helper_bound,
-            ..
+            keys, helper_bound, ..
         } = self;
         let implementor = crate::naming::implementor_ident();
 
@@ -362,17 +394,17 @@ impl BlanketImpl<'_> {
         generics.params.push(GenericParam::Type(TypeParam::from(
             implementor.clone(),
         )));
-        let implementor_bounds: [WherePredicate; 3] = [
-            parse_quote!(#implementor: ::typestate_groups::WithState),
+        let state_bounds = keys.iter().map(|key| -> WherePredicate {
             parse_quote! {
-                <#implementor as ::typestate_groups::WithState>::State: #state_types
-            },
-            parse_quote!(#implementor: #helper_bound),
-        ];
-        generics
-            .make_where_clause()
-            .predicates
-            .extend(implementor_bounds);
+                <#implementor as ::typestate_groups::WithState>::State: #key
+            }
+        });
+        let predicates = &mut generics.make_where_clause().predicates;
+        predicates.push(
+            parse_quote!(#implementor: ::typestate_groups::WithState),
+        );
+        predicates.extend(state_bounds);
+        predicates.push(parse_quote!(#implementor: #helper_bound));
         generics
     }
 }
@@ -450,15 +482,50 @@ impl ToTokens for HelperItem<'_> {
 
 /// `#[group_trait]`'s arguments: `by = <state>`.
 pub struct GroupTraitArgs {
-    ty: TypePath,
+    /// The traits after `by`, ordered by name.
+    keys: Vec<Path>,
 }
 
 impl Parse for GroupTraitArgs {
+    /// Parses `by = Meta` or `by = (Meta, Role)`, and orders the traits
+    /// by name, as `#[group_impl]` orders its `Key = Group` pairs.
     fn parse(input: ParseStream) -> syn::Result<Self> {
         input.parse::<kw::by>()?;
         input.parse::<Token![=]>()?;
 
-        Ok(GroupTraitArgs { ty: input.parse()? })
+        let mut keys: Vec<Path> = if input.peek(token::Paren) {
+            let content;
+            parenthesized!(content in input);
+            Punctuated::<Path, Token![,]>::parse_terminated(&content)?
+                .into_iter()
+                .collect()
+        } else {
+            vec![input.parse()?]
+        };
+        keys.sort_by_cached_key(|key| key.last_ident().to_string());
+
+        if keys.is_empty() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "name a trait to group by, such as `by = Meta` or `by = \
+                 (Meta, Role)`",
+            ));
+        }
+        if let Some([_, duplicate]) = keys
+            .windows(2)
+            .find(|pair| pair[0].last_ident() == pair[1].last_ident())
+        {
+            return Err(syn::Error::new_spanned(
+                duplicate,
+                format!(
+                    "group by `{}` once, and give each trait in `by` a \
+                     different name",
+                    duplicate.last_ident()
+                ),
+            ));
+        }
+
+        Ok(GroupTraitArgs { keys })
     }
 }
 

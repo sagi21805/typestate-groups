@@ -123,7 +123,7 @@ impl GroupImpl<'_> {
 
         let helper_mod = crate::naming::helper_mod_ident(&ident);
         let helper_trait = crate::naming::helper_trait_ident(&ident);
-        arguments.insert_after_lifetimes(parse_quote!(#group));
+        arguments.insert_after_lifetimes([parse_quote!(#group)]);
         let prefix = segments.iter();
 
         parse_quote! {

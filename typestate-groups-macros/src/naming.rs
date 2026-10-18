@@ -21,6 +21,12 @@ pub fn group_param_ident() -> Ident {
     format_ident!("__TypestateGroupsGroup")
 }
 
+/// `Meta` -> `__TypestateGroupsMetaGroup`, the `#[group_trait]` helper
+/// trait's parameter for a group of `Meta`.
+pub fn key_group_param_ident(key: &Ident) -> Ident {
+    format_ident!("__TypestateGroups{}Group", key)
+}
+
 /// The type a `#[group_trait]` blanket impl implements the trait for.
 pub fn implementor_ident() -> Ident {
     format_ident!("__TypestateGroupsImplementor")

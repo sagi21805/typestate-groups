@@ -89,6 +89,15 @@ pub(crate) impl Path {
             }
     }
 
+    /// `a::Meta` -> `Meta`
+    fn last_ident(&self) -> &Ident {
+        &self
+            .segments
+            .last()
+            .expect("a parsed path has at least one segment")
+            .ident
+    }
+
     /// `a::Meta` -> `a::MetaGroupMarker`
     fn with_last_ident(
         &self,
@@ -107,6 +116,19 @@ pub(crate) impl Generics {
     /// The type parameter named `ident`, if these generics declare one.
     fn type_param_mut(&mut self, ident: &Ident) -> Option<&mut TypeParam> {
         self.type_params_mut().find(|tp| tp.ident == *ident)
+    }
+
+    /// Inserts `params`, in order, after the lifetimes.
+    ///
+    /// `<'a, T>`, `[G: A, H: B]` -> `<'a, G: A, H: B, T>`
+    fn insert_after_lifetimes(
+        &mut self,
+        params: impl IntoIterator<Item = GenericParam>,
+    ) {
+        let lifetimes = self.lifetimes().count();
+        for (index, param) in params.into_iter().enumerate() {
+            self.params.insert(lifetimes + index, param);
+        }
     }
 
     /// The arguments that name these generics.
@@ -161,10 +183,13 @@ pub(crate) impl Generics {
 
 #[ext]
 pub(crate) impl PathArguments {
-    /// Inserts `arg` after the lifetimes.
+    /// Inserts `args`, in order, after the lifetimes.
     ///
-    /// `<'a, T>`, `G` -> `<'a, G, T>`
-    fn insert_after_lifetimes(&mut self, arg: GenericArgument) {
+    /// `<'a, T>`, `[G, H]` -> `<'a, G, H, T>`
+    fn insert_after_lifetimes(
+        &mut self,
+        args: impl IntoIterator<Item = GenericArgument>,
+    ) {
         if self.is_none() {
             *self = PathArguments::AngleBracketed(parse_quote!(<>));
         }
@@ -176,7 +201,9 @@ pub(crate) impl PathArguments {
                     matches!(arg, GenericArgument::Lifetime(_))
                 })
                 .count();
-            angle.args.insert(lifetimes, arg);
+            for (index, arg) in args.into_iter().enumerate() {
+                angle.args.insert(lifetimes + index, arg);
+            }
         }
     }
 }
