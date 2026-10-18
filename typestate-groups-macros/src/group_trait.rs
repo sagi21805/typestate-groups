@@ -40,11 +40,11 @@ impl<'ast> GroupTrait<'ast> {
             crate::naming::helper_mod_ident(&item_trait.ident);
 
         let mut helper_args = item_trait.generics.to_arguments();
-        helper_args.insert_after_lifetimes(keys.iter().map(|key| {
-            parse_quote! {
+        for key in keys.iter().rev() {
+            helper_args.insert_after_lifetimes(parse_quote! {
                 <<#implementor as ::typestate_groups::WithState>::State as #key>::Marker
-            }
-        }));
+            });
+        }
 
         let items = item_trait
             .items
@@ -328,7 +328,9 @@ impl ToTokens for HelperMod<'_> {
             self.keys.iter().map(Path::group_member_trait).collect();
 
         let mut helper_generics = generics.clone();
-        helper_generics.insert_after_lifetimes(group_params.clone());
+        for param in group_params.iter().rev() {
+            helper_generics.insert_after_lifetimes(param.clone());
+        }
 
         tokens.extend(quote! {
             #[doc(hidden)]

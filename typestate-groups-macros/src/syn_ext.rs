@@ -118,17 +118,13 @@ pub(crate) impl Generics {
         self.type_params_mut().find(|tp| tp.ident == *ident)
     }
 
-    /// Inserts `params`, in order, after the lifetimes.
+    /// Inserts `param` right after the lifetimes, ahead of the
+    /// parameters inserted before it.
     ///
-    /// `<'a, T>`, `[G: A, H: B]` -> `<'a, G: A, H: B, T>`
-    fn insert_after_lifetimes(
-        &mut self,
-        params: impl IntoIterator<Item = GenericParam>,
-    ) {
+    /// `<'a, T>`, `G: A` -> `<'a, G: A, T>`
+    fn insert_after_lifetimes(&mut self, param: GenericParam) {
         let lifetimes = self.lifetimes().count();
-        for (index, param) in params.into_iter().enumerate() {
-            self.params.insert(lifetimes + index, param);
-        }
+        self.params.insert(lifetimes, param);
     }
 
     /// The arguments that name these generics.
@@ -183,13 +179,11 @@ pub(crate) impl Generics {
 
 #[ext]
 pub(crate) impl PathArguments {
-    /// Inserts `args`, in order, after the lifetimes.
+    /// Inserts `arg` right after the lifetimes, ahead of the arguments
+    /// inserted before it.
     ///
-    /// `<'a, T>`, `[G, H]` -> `<'a, G, H, T>`
-    fn insert_after_lifetimes(
-        &mut self,
-        args: impl IntoIterator<Item = GenericArgument>,
-    ) {
+    /// `<'a, T>`, `G` -> `<'a, G, T>`
+    fn insert_after_lifetimes(&mut self, arg: GenericArgument) {
         if self.is_none() {
             *self = PathArguments::AngleBracketed(parse_quote!(<>));
         }
@@ -201,9 +195,7 @@ pub(crate) impl PathArguments {
                     matches!(arg, GenericArgument::Lifetime(_))
                 })
                 .count();
-            for (index, arg) in args.into_iter().enumerate() {
-                angle.args.insert(lifetimes + index, arg);
-            }
+            angle.args.insert(lifetimes, arg);
         }
     }
 }

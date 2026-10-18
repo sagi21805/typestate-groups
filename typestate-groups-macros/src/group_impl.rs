@@ -1,8 +1,8 @@
+use extend::ext;
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
-    AssocType, GenericArgument, Ident, ItemImpl, Path, PathSegment, Token,
-    WherePredicate,
+    AssocType, Ident, ItemImpl, Path, PathSegment, Token, WherePredicate,
     parse::{Parse, ParseStream},
     parse_quote,
 };
@@ -74,15 +74,6 @@ impl ToTokens for GroupImpl<'_> {
     ///
     /// Each `Key = Group` pair also bounds `S: Key<Marker = Group>`, so a
     /// group named under the wrong key fails there.
-    ///
-    /// The group sets the state's associated types, so every `Assoc =
-    /// Type` binding on the state becomes an error. The impl is still
-    /// emitted without them, so its body keeps its types while the user
-    /// fixes it.
-    ///
-    /// The blanket impl gives `Self` the trait's items too, so each
-    /// `Self::item` path to a const or fn the impl defines is qualified
-    /// with the helper trait.
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut group_impl = self.inner_impl.clone();
         let bindings =
@@ -130,11 +121,9 @@ impl GroupImpl<'_> {
 
         let helper_mod = crate::naming::helper_mod_ident(&ident);
         let helper_trait = crate::naming::helper_trait_ident(&ident);
-        arguments.insert_after_lifetimes(self.groups.iter().map(
-            |ImplGroup { group, .. }| -> GenericArgument {
-                parse_quote!(#group)
-            },
-        ));
+        for ImplGroup { group, .. } in self.groups.iter().rev() {
+            arguments.insert_after_lifetimes(parse_quote!(#group));
+        }
         let prefix = segments.iter();
 
         parse_quote! {
@@ -202,7 +191,9 @@ impl Parse for GroupImplArgs {
             let ident: Ident = input.parse()?;
             match ident.to_string().as_str() {
                 "state" => state.parse_once(&ident, input)?,
-                _ => groups.push(ImplGroup::parse_after(ident, input)?),
+                _ => groups.insert_by_key(ImplGroup::parse_after(
+                    ident, input,
+                )?)?,
             }
             if !input.is_empty() {
                 input.parse::<Token![,]>()?;
@@ -215,20 +206,21 @@ impl Parse for GroupImplArgs {
                 "name the group, such as `#[group_impl(Numbers)]`",
             ));
         }
-        GroupImplArgs::new(groups, state)
+        Ok(GroupImplArgs { groups, state })
     }
 }
 
-impl GroupImplArgs {
-    /// Orders the groups by key, rejecting a group without a key next to
-    /// others and a key given twice.
-    fn new(
-        mut groups: Vec<ImplGroup>,
-        state: Option<Ident>,
-    ) -> syn::Result<Self> {
-        if groups.len() > 1
-            && let Some(unnamed) =
-                groups.iter().find(|group| group.key.is_none())
+#[ext]
+impl Vec<ImplGroup> {
+    /// Inserts `group` in key order, rejecting a group without a key next
+    /// to others and a key given twice.
+    fn insert_by_key(&mut self, group: ImplGroup) -> syn::Result<()> {
+        if !self.is_empty()
+            && let Some(unnamed) = self
+                .first()
+                .into_iter()
+                .chain([&group])
+                .find(|group| group.key.is_none())
         {
             return Err(syn::Error::new(
                 unnamed.group.span(),
@@ -237,23 +229,22 @@ impl GroupImplArgs {
             ));
         }
 
-        groups.sort_by_cached_key(|group| {
-            group.key.as_ref().map(Ident::to_string)
-        });
-        if let Some([_, duplicate]) =
-            groups.windows(2).find(|pair| pair[0].key == pair[1].key)
-        {
-            let key = duplicate
-                .key
-                .as_ref()
-                .expect("only one group goes without a key");
-            return Err(syn::Error::new(
-                key.span(),
-                format!("name one group for `{key}`"),
-            ));
+        match self.binary_search_by(|probe| probe.key.cmp(&group.key)) {
+            Ok(_) => {
+                let key = group
+                    .key
+                    .as_ref()
+                    .expect("a group without a key stands alone");
+                Err(syn::Error::new(
+                    key.span(),
+                    format!("name one group for `{key}`"),
+                ))
+            }
+            Err(index) => {
+                self.insert(index, group);
+                Ok(())
+            }
         }
-
-        Ok(GroupImplArgs { groups, state })
     }
 }
 
