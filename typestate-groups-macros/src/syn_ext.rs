@@ -89,6 +89,15 @@ pub(crate) impl Path {
             }
     }
 
+    /// `a::Meta` -> `Meta`
+    fn last_ident(&self) -> &Ident {
+        &self
+            .segments
+            .last()
+            .expect("a parsed path has at least one segment")
+            .ident
+    }
+
     /// `a::Meta` -> `a::MetaGroupMarker`
     fn with_last_ident(
         &self,
@@ -107,6 +116,15 @@ pub(crate) impl Generics {
     /// The type parameter named `ident`, if these generics declare one.
     fn type_param_mut(&mut self, ident: &Ident) -> Option<&mut TypeParam> {
         self.type_params_mut().find(|tp| tp.ident == *ident)
+    }
+
+    /// Inserts `param` right after the lifetimes, ahead of the
+    /// parameters inserted before it.
+    ///
+    /// `<'a, T>`, `G: A` -> `<'a, G: A, T>`
+    fn insert_after_lifetimes(&mut self, param: GenericParam) {
+        let lifetimes = self.lifetimes().count();
+        self.params.insert(lifetimes, param);
     }
 
     /// The arguments that name these generics.
@@ -161,7 +179,8 @@ pub(crate) impl Generics {
 
 #[ext]
 pub(crate) impl PathArguments {
-    /// Inserts `arg` after the lifetimes.
+    /// Inserts `arg` right after the lifetimes, ahead of the arguments
+    /// inserted before it.
     ///
     /// `<'a, T>`, `G` -> `<'a, G, T>`
     fn insert_after_lifetimes(&mut self, arg: GenericArgument) {

@@ -1,0 +1,93 @@
+error[E0405]: cannot find trait `A` in this scope
+  --> tests/ui/group_intersection.rs:73:14
+   |
+73 | #[group_impl(A = Numbers, B = Attached)]
+   |              ^ not found in this scope
+
+error[E0405]: cannot find trait `B` in this scope
+  --> tests/ui/group_intersection.rs:73:27
+   |
+73 | #[group_impl(A = Numbers, B = Attached)]
+   |                           ^ not found in this scope
+
+error[E0119]: conflicting implementations of trait `DescribeHelper<Numbers, Heads>` for type `Wrap<_>`
+  --> tests/ui/group_intersection.rs:57:1
+   |
+49 | / impl<S: Meta> Describe for Wrap<S> {
+50 | |     fn describe(&self) -> &'static str {
+51 | |         "small head"
+52 | |     }
+53 | | }
+   | |_- first implementation here
+...
+57 | / impl<S: Meta> Describe for Wrap<S> {
+58 | |     fn describe(&self) -> &'static str {
+59 | |         "small head again"
+60 | |     }
+61 | | }
+   | |_^ conflicting implementation for `Wrap<_>`
+
+error[E0107]: trait takes 2 generic arguments but 1 generic argument was supplied
+  --> tests/ui/group_intersection.rs:82:15
+   |
+81 | #[group_impl(Meta = Words)]
+   |                     ----- supplied 1 generic argument
+82 | impl<S: Meta> Describe for Wrap<S> {
+   |               ^^^^^^^^ expected 2 generic arguments
+   |
+note: trait defined here, with 2 generic parameters: `__TypestateGroupsMetaGroup`, `__TypestateGroupsRoleGroup`
+  --> tests/ui/group_intersection.rs:44:7
+   |
+43 | #[group_trait(by = (Meta, Role))]
+   |                     ----  ----
+44 | trait Describe {
+   |       ^^^^^^^^
+help: add missing generic argument
+   |
+81 | #[group_impl(Meta = Words, __TypestateGroupsRoleGroup)]
+   |                          ++++++++++++++++++++++++++++
+
+error[E0277]: the trait bound `Attached: MetaGroupMarker` is not satisfied
+  --> tests/ui/group_intersection.rs:65:1
+   |
+65 | / impl<S: Meta> Describe for Wrap<S> {
+66 | |     fn describe(&self) -> &'static str {
+67 | |         "swapped"
+68 | |     }
+69 | | }
+   | |_^ unsatisfied trait bound
+   |
+help: the trait `MetaGroupMarker` is not implemented for `Attached`
+  --> tests/ui/group_intersection.rs:35:1
+   |
+35 | #[group(Attached)]
+   | ^^^^^^^^^^^^^^^^
+help: the following other types implement trait `MetaGroupMarker`
+  --> tests/ui/group_intersection.rs:22:1
+   |
+22 | #[group(Numbers)]
+   | ^^^^^^^^^^^^^^^ `Numbers`
+...
+27 | #[group(Words)]
+   | ^^^^^^^^^^^^^ `Words`
+   = note: this error originates in the attribute macro `group` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0107]: trait takes 2 generic arguments but 1 generic argument was supplied
+  --> tests/ui/group_intersection.rs:81:1
+   |
+81 | #[group_impl(Meta = Words)]
+   | ^^^^^^^^^^^^^^^^^^^^-----^^
+   | |                   |
+   | |                   supplied 1 generic argument
+   | expected 2 generic arguments
+   |
+note: trait defined here, with 2 generic parameters: `__TypestateGroupsMetaGroup`, `__TypestateGroupsRoleGroup`
+  --> tests/ui/group_intersection.rs:43:1
+   |
+43 | #[group_trait(by = (Meta, Role))]
+   | ^^^^^^^^^^^^^^^^^^^^----^^----^^^
+   = note: this error originates in the attribute macro `group_impl` which comes from the expansion of the attribute macro `group_trait` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: add missing generic argument
+   |
+81 | #[group_impl(Meta = Words, __TypestateGroupsRoleGroup)]
+   |                          ++++++++++++++++++++++++++++

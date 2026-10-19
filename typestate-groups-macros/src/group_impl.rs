@@ -1,4 +1,5 @@
-use proc_macro2::TokenStream;
+use extend::ext;
+use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
     AssocType, Ident, ItemImpl, Path, PathSegment, Token, WherePredicate,
@@ -13,7 +14,8 @@ use crate::syn_ext::{
 
 pub struct GroupImpl<'ast> {
     inner_impl: &'ast ItemImpl,
-    group_name: &'ast Ident,
+    /// Ordered by key, as `#[group_trait]` orders its keys.
+    groups: &'ast [ImplGroup],
     /// The impl's generic type parameter carrying the state.
     state: &'ast Ident,
 }
@@ -60,7 +62,7 @@ impl<'ast> GroupImpl<'ast> {
 
         Ok(GroupImpl {
             inner_impl: item_impl,
-            group_name: &args.group,
+            groups: &args.groups,
             state,
         })
     }
@@ -70,14 +72,8 @@ impl ToTokens for GroupImpl<'_> {
     /// `impl<S> A<'a, X> for T<S>` -> `impl<S> __a_helper_mod::AHelper<'a,
     /// Group, X> for T<S> where S: __a_helper_mod::Member<Group>`
     ///
-    /// The group sets the state's associated types, so every `Assoc =
-    /// Type` binding on the state becomes an error. The impl is still
-    /// emitted without them, so its body keeps its types while the user
-    /// fixes it.
-    ///
-    /// The blanket impl gives `Self` the trait's items too, so each
-    /// `Self::item` path to a const or fn the impl defines is qualified
-    /// with the helper trait.
+    /// Each `Key = Group` pair also bounds `S: Key<Marker = Group>`, so a
+    /// group named under the wrong key fails there.
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut group_impl = self.inner_impl.clone();
         let bindings =
@@ -89,11 +85,14 @@ impl ToTokens for GroupImpl<'_> {
             .expect("`GroupImpl::new` accepts only trait impls");
         let helper_trait = self.helper_trait_path(trait_path);
         *trait_path = helper_trait.clone();
-        group_impl
-            .generics
-            .make_where_clause()
-            .predicates
-            .push(self.member_bound(&helper_trait));
+        let key_bounds = self
+            .groups
+            .iter()
+            .filter_map(|group| group.key_bound(self.state));
+        let predicates =
+            &mut group_impl.generics.make_where_clause().predicates;
+        predicates.push(self.member_bound(&helper_trait));
+        predicates.extend(key_bounds);
         group_impl.qualify_self_paths(&helper_trait);
 
         let binding_errors = bindings.iter().map(|binding| {
@@ -111,7 +110,6 @@ impl ToTokens for GroupImpl<'_> {
 impl GroupImpl<'_> {
     /// `a::A<'a, X>` -> `a::__a_helper_mod::AHelper<'a, Group, X>`
     fn helper_trait_path(&self, trait_path: &Path) -> Path {
-        let group = self.group_name;
         let leading_colon = trait_path.leading_colon;
         let mut segments = trait_path.segments.clone();
         let PathSegment {
@@ -123,7 +121,9 @@ impl GroupImpl<'_> {
 
         let helper_mod = crate::naming::helper_mod_ident(&ident);
         let helper_trait = crate::naming::helper_trait_ident(&ident);
-        arguments.insert_after_lifetimes(parse_quote!(#group));
+        for ImplGroup { group, .. } in self.groups.iter().rev() {
+            arguments.insert_after_lifetimes(parse_quote!(#group));
+        }
         let prefix = segments.iter();
 
         parse_quote! {
@@ -138,14 +138,14 @@ impl GroupImpl<'_> {
     /// WithState>::State`, because a `where` clause implying `Self:
     /// WithState` hides the impl that resolves that projection to `S`.
     fn member_bound(&self, helper_trait: &Path) -> WherePredicate {
-        let group = self.group_name;
+        let groups = self.groups.iter().map(|group| &group.group);
         let member_ident = crate::naming::helper_member_ident();
         let mut member = helper_trait.clone();
         *member
             .segments
             .last_mut()
             .expect("a parsed trait path has at least one segment") =
-            parse_quote!(#member_ident<#group>);
+            parse_quote!(#member_ident<#(#groups),*>);
 
         let state = self.state;
         parse_quote! { #state: #member }
@@ -154,50 +154,130 @@ impl GroupImpl<'_> {
     /// The error for a binding on the state, which the group already sets
     /// or which belongs to a trait the impl isn't grouped by.
     fn binding_error(&self, binding: &AssocType) -> syn::Error {
-        let group = self.group_name;
+        let groups = self
+            .groups
+            .iter()
+            .map(|group| format!("`{}`", group.group))
+            .collect::<Vec<_>>()
+            .join(", ");
 
         syn::Error::new_spanned(
             binding,
             format!(
-                "remove `{}`: `#[group_impl({group})]` takes the state's \
-                 types from `{group}`. To pin a type `{group}` doesn't \
-                 set, declare it on the trait `{group}` groups by, or \
-                 group this trait by the trait that declares it",
+                "remove `{}`, because `#[group_impl]` takes the state's \
+                 types from {groups}. To pin a type they don't set, \
+                 declare it on a trait they group by, or group this \
+                 trait by the trait that declares it",
                 quote!(#binding),
             ),
         )
     }
 }
 
-/// `#[group_impl(Group, state = S)]`
+/// `#[group_impl(Group, state = S)]` or `#[group_impl(Meta = Group,
+/// Role = Group, state = S)]`
 pub struct GroupImplArgs {
-    group: Ident,
+    /// Ordered by key, as `#[group_trait]` orders its keys.
+    groups: Vec<ImplGroup>,
     state: Option<Ident>,
 }
 
 impl Parse for GroupImplArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let group = input.parse()?;
+        let mut groups = Vec::new();
         let mut state: Option<Ident> = None;
 
         while !input.is_empty() {
-            input.parse::<Token![,]>()?;
-            if input.is_empty() {
-                break;
+            let ident: Ident = input.parse()?;
+            match ident.to_string().as_str() {
+                "state" => state.parse_once(&ident, input)?,
+                _ => groups.insert_by_key(ImplGroup::parse_after(
+                    ident, input,
+                )?)?,
             }
-
-            let key: Ident = input.parse()?;
-            match key.to_string().as_str() {
-                "state" => state.parse_once(&key, input)?,
-                _ => {
-                    return Err(syn::Error::new(
-                        key.span(),
-                        "expected `state = <Ident>`",
-                    ));
-                }
+            if !input.is_empty() {
+                input.parse::<Token![,]>()?;
             }
         }
 
-        Ok(GroupImplArgs { group, state })
+        if groups.is_empty() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "name the group, such as `#[group_impl(Numbers)]`",
+            ));
+        }
+        Ok(GroupImplArgs { groups, state })
+    }
+}
+
+#[ext]
+impl Vec<ImplGroup> {
+    /// Inserts `group` in key order, rejecting a group without a key next
+    /// to others and a key given twice.
+    fn insert_by_key(&mut self, group: ImplGroup) -> syn::Result<()> {
+        if !self.is_empty()
+            && let Some(unnamed) = self
+                .first()
+                .into_iter()
+                .chain([&group])
+                .find(|group| group.key.is_none())
+        {
+            return Err(syn::Error::new(
+                unnamed.group.span(),
+                "name the trait each group belongs to, such as `Meta = \
+                 Numbers`, when the impl has more than one group",
+            ));
+        }
+
+        match self.binary_search_by(|probe| probe.key.cmp(&group.key)) {
+            Ok(_) => {
+                let key = group
+                    .key
+                    .as_ref()
+                    .expect("a group without a key stands alone");
+                Err(syn::Error::new(
+                    key.span(),
+                    format!("name one group for `{key}`"),
+                ))
+            }
+            Err(index) => {
+                self.insert(index, group);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// A group of `#[group_impl]`, written `Group`, or `Meta = Group` to
+/// name the trait it groups by.
+struct ImplGroup {
+    key: Option<Ident>,
+    group: Ident,
+}
+
+impl ImplGroup {
+    /// Parses the rest of `Meta = Group`, or takes `ident` as the group
+    /// when no `=` follows it.
+    fn parse_after(ident: Ident, input: ParseStream) -> syn::Result<Self> {
+        if !input.peek(Token![=]) {
+            return Ok(ImplGroup {
+                key: None,
+                group: ident,
+            });
+        }
+        input.parse::<Token![=]>()?;
+
+        Ok(ImplGroup {
+            key: Some(ident),
+            group: input.parse()?,
+        })
+    }
+
+    /// `Meta = Group` -> `S: Meta<Marker = Group>`
+    fn key_bound(&self, state: &Ident) -> Option<WherePredicate> {
+        let ImplGroup { key, group } = self;
+        let key = key.as_ref()?;
+
+        Some(parse_quote!(#state: #key<Marker = #group>))
     }
 }
