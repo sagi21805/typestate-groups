@@ -227,7 +227,8 @@ and the build fails asking you to fix `#[size(4)]`.
 every field that changes type holds bits valid in the new state. The old
 type must be `IntoBytes` (no padding) and the new one `FromBytes` (every
 bit pattern valid). Casting a `u8` into a `bool` fails with
-``convert with `morph`: `u8` may hold bits that are not a valid `bool` ``.
+``convert with `morph` instead of transmuting: zerocopy can't show that
+`u8` bytes stay valid as `bool` under `typestate_groups::Read` access``.
 
 | Method | Each changed field also needs |
 |---|---|
@@ -316,6 +317,15 @@ traits:
 | `&T`, `Arc<T>`, `Rc<T>` | `ReadShared` | `ReadShared` | `ReadShared` |
 | `&mut T` | `ReadWrite` | `ReadShared` | `ReadWrite` |
 | `*const T`, `*mut T`, `NonNull<T>` | `ReadWriteShared` | `ReadWriteShared` | `ReadWriteShared` |
+
+#### Pointers held by value
+
+A state's type that is itself a pointer, such as `type Prev =
+Option<NonNull<u64>>`, can't change state by cast, even between two states
+of one group. zerocopy implements neither `IntoBytes` nor `FromBytes` for
+pointers, so `Permits` fails. Keep the pointer in a field whose type
+doesn't use the state, or store an address and name the state where you
+dereference it.
 
 `Vec` and `Result` don't implement `Indirect`. `Result<T, E>` stores `T`
 inline and packs its tag into `T`'s invalid bit patterns, so
