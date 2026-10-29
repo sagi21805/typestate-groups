@@ -1,0 +1,98 @@
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `Option<NonNull<u64>>` bytes stay valid as `Option<NonNull<u64>>` under `typestate_groups::Read` access
+  --> tests/ui/cast_pointer_projection.rs:35:13
+   |
+35 |     let _ = meta.cast_state::<Loose>();
+   |             ^^^^ the trait `Permits<Option<NonNull<u64>>, Option<NonNull<u64>>>` is not implemented for `typestate_groups::Read`
+   |
+   = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Meta<S>` implements trait `CastableState<To, B>`
+  --> tests/ui/cast_pointer_projection.rs:28:1
+   |
+28 | #[typestate(unsafe_transmute = true)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | |
+   | `CastableState<__TypestateGroupsTargetState, ByMut>`
+   | `CastableState<__TypestateGroupsTargetState, ByRef>`
+   | `CastableState<__TypestateGroupsTargetState, ByValue>`
+note: required for `Meta<Linked>` to implement `CastableState<Loose, ByValue>`
+  --> tests/ui/cast_pointer_projection.rs:28:1
+   |
+28 | #[typestate(unsafe_transmute = true)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
+29 | struct Meta<S: Node> {
+   |        ^^^^^^^^^^^^^
+note: required by a bound in `cast_state`
+  --> $WORKSPACE/typestate-groups/src/transmute.rs
+   |
+   |     fn cast_state<To: State>(self) -> <Self as Restate<To>>::Target
+   |        ---------- required by a bound in this associated function
+   |     where
+   |         Self: CastableState<To, ByValue>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
+   = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `Option<NonNull<u64>>` bytes stay valid as `Option<NonNull<u64>>` under `ReadShared` access
+  --> tests/ui/cast_pointer_projection.rs:39:13
+   |
+39 |     let _ = meta.cast_state_ref::<Loose>();
+   |             ^^^^ the trait `Permits<Option<NonNull<u64>>, Option<NonNull<u64>>>` is not implemented for `ReadShared`
+   |
+   = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Meta<S>` implements trait `CastableState<To, B>`
+  --> tests/ui/cast_pointer_projection.rs:28:1
+   |
+28 | #[typestate(unsafe_transmute = true)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | |
+   | `CastableState<__TypestateGroupsTargetState, ByMut>`
+   | `CastableState<__TypestateGroupsTargetState, ByRef>`
+   | `CastableState<__TypestateGroupsTargetState, ByValue>`
+note: required for `Meta<Linked>` to implement `CastableState<Loose, ByRef>`
+  --> tests/ui/cast_pointer_projection.rs:28:1
+   |
+28 | #[typestate(unsafe_transmute = true)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
+29 | struct Meta<S: Node> {
+   |        ^^^^^^^^^^^^^
+note: required by a bound in `cast_state_ref`
+  --> $WORKSPACE/typestate-groups/src/transmute.rs
+   |
+   |     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
+   |        -------------- required by a bound in this associated function
+   |     where
+   |         Self: CastableState<To, ByRef>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
+   = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `Cell<u8>` bytes stay valid as `Cell<u8>` under `ReadShared` access
+  --> tests/ui/cast_pointer_projection.rs:39:13
+   |
+39 |     let _ = meta.cast_state_ref::<Loose>();
+   |             ^^^^ the trait `Permits<Cell<u8>, Cell<u8>>` is not implemented for `ReadShared`
+   |
+   = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Meta<S>` implements trait `CastableState<To, B>`
+  --> tests/ui/cast_pointer_projection.rs:28:1
+   |
+28 | #[typestate(unsafe_transmute = true)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | |
+   | `CastableState<__TypestateGroupsTargetState, ByMut>`
+   | `CastableState<__TypestateGroupsTargetState, ByRef>`
+   | `CastableState<__TypestateGroupsTargetState, ByValue>`
+note: required for `Meta<Linked>` to implement `CastableState<Loose, ByRef>`
+  --> tests/ui/cast_pointer_projection.rs:28:1
+   |
+28 | #[typestate(unsafe_transmute = true)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound introduced here
+29 | struct Meta<S: Node> {
+   |        ^^^^^^^^^^^^^
+note: required by a bound in `cast_state_ref`
+  --> $WORKSPACE/typestate-groups/src/transmute.rs
+   |
+   |     fn cast_state_ref<To: State>(&self) -> &<Self as Restate<To>>::Target
+   |        -------------- required by a bound in this associated function
+   |     where
+   |         Self: CastableState<To, ByRef>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
+   = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)

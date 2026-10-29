@@ -1,21 +1,19 @@
-error[E0277]: the trait bound `bool: FromBytes` is not satisfied
-   --> tests/ui/cast_state.rs:139:17
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u8` bytes stay valid as `bool` under `typestate_groups::Read` access
+   --> tests/ui/cast_state.rs:139:13
     |
 139 |     let _ = raw.cast_state::<Flag>();
-    |                 ^^^^^^^^^^ the trait `FromBytes` is not implemented for `bool`
+    |             ^^^ the trait `Permits<u8, bool>` is not implemented for `typestate_groups::Read`
     |
-    = note: Consider adding `#[derive(FromBytes)]` to `bool`
-    = help: the following other types implement trait `FromBytes`:
-              ()
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-              Atomic<u32>
-            and $N others
-    = note: required for `typestate_groups::Read` to implement `Permits<u8, bool>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Small<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:41:1
+    |
+ 41 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Small<Raw>` to implement `CastableState<Flag, ByValue>`
    --> tests/ui/cast_state.rs:41:1
     |
@@ -33,24 +31,22 @@ note: required by a bound in `cast_state`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `char: FromBytes` is not satisfied
-   --> tests/ui/cast_state.rs:143:18
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u32` bytes stay valid as `char` under `typestate_groups::Read` access
+   --> tests/ui/cast_state.rs:143:13
     |
 143 |     let _ = bits.cast_state::<Letter>();
-    |                  ^^^^^^^^^^ the trait `FromBytes` is not implemented for `char`
+    |             ^^^^ the trait `Permits<u32, char>` is not implemented for `typestate_groups::Read`
     |
-    = note: Consider adding `#[derive(FromBytes)]` to `char`
-    = help: the following other types implement trait `FromBytes`:
-              ()
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-              Atomic<u32>
-            and $N others
-    = note: required for `typestate_groups::Read` to implement `Permits<u32, char>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Large<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:113:1
+    |
+113 | #[typestate(unsafe_transmute = true, align = 4)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Large<Bits>` to implement `CastableState<Letter, ByValue>`
    --> tests/ui/cast_state.rs:113:1
     |
@@ -68,24 +64,22 @@ note: required by a bound in `cast_state`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `NonZero<u32>: FromBytes` is not satisfied
-   --> tests/ui/cast_state.rs:147:18
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u32` bytes stay valid as `NonZero<u32>` under `ReadShared` access
+   --> tests/ui/cast_state.rs:147:13
     |
 147 |     let _ = bits.cast_state_ref::<Count>();
-    |                  ^^^^^^^^^^^^^^ the trait `FromBytes` is not implemented for `NonZero<u32>`
+    |             ^^^^ the trait `Permits<u32, NonZero<u32>>` is not implemented for `ReadShared`
     |
-    = note: Consider adding `#[derive(FromBytes)]` to `NonZero<u32>`
-    = help: the following other types implement trait `FromBytes`:
-              ()
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-              Atomic<u32>
-            and $N others
-    = note: required for `ReadShared` to implement `Permits<u32, NonZero<u32>>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Large<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:113:1
+    |
+113 | #[typestate(unsafe_transmute = true, align = 4)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Large<Bits>` to implement `CastableState<Count, ByRef>`
    --> tests/ui/cast_state.rs:113:1
     |
@@ -103,29 +97,22 @@ note: required by a bound in `cast_state_ref`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Padded: IntoBytes` is not satisfied
-   --> tests/ui/cast_state.rs:151:20
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `Padded` bytes stay valid as `u32` under `typestate_groups::Read` access
+   --> tests/ui/cast_state.rs:151:13
     |
 151 |     let _ = gapped.cast_state::<Bits>();
-    |                    ^^^^^^^^^^ unsatisfied trait bound
+    |             ^^^^^^ the trait `Permits<Padded, u32>` is not implemented for `typestate_groups::Read`
     |
-help: the trait `IntoBytes` is not implemented for `Padded`
-   --> tests/ui/cast_state.rs:72:1
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Large<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:113:1
     |
- 72 | struct Padded {
-    | ^^^^^^^^^^^^^
-    = note: Consider adding `#[derive(IntoBytes)]` to `Padded`
-    = help: the following other types implement trait `IntoBytes`:
-              ()
-              Atomic<bool>
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-            and $N others
-    = note: required for `typestate_groups::Read` to implement `Permits<Padded, u32>`
+113 | #[typestate(unsafe_transmute = true, align = 4)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Large<Gapped>` to implement `CastableState<Bits, ByValue>`
    --> tests/ui/cast_state.rs:113:1
     |
@@ -143,24 +130,22 @@ note: required by a bound in `cast_state`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `bool: FromBytes` is not satisfied
-   --> tests/ui/cast_state.rs:155:10
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `bool` bytes stay valid as `u8` under `ReadWrite` access
+   --> tests/ui/cast_state.rs:155:5
     |
 155 |     flag.cast_state_mut::<Raw>().value = 2;
-    |          ^^^^^^^^^^^^^^ the trait `FromBytes` is not implemented for `bool`
+    |     ^^^^ the trait `Permits<bool, u8>` is not implemented for `ReadWrite`
     |
-    = note: Consider adding `#[derive(FromBytes)]` to `bool`
-    = help: the following other types implement trait `FromBytes`:
-              ()
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-              Atomic<u32>
-            and $N others
-    = note: required for `ReadWrite` to implement `Permits<bool, u8>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Small<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:41:1
+    |
+ 41 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Small<Flag>` to implement `CastableState<Raw, ByMut>`
    --> tests/ui/cast_state.rs:41:1
     |
@@ -178,24 +163,22 @@ note: required by a bound in `cast_state_mut`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_mut`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Cell<u32>: Immutable` is not satisfied
-   --> tests/ui/cast_state.rs:159:10
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u32` bytes stay valid as `Cell<u32>` under `ReadShared` access
+   --> tests/ui/cast_state.rs:159:5
     |
 159 |     bits.cast_state_ref::<Shared>().value.set(2);
-    |          ^^^^^^^^^^^^^^ the trait `Immutable` is not implemented for `Cell<u32>`
+    |     ^^^^ the trait `Permits<u32, Cell<u32>>` is not implemented for `ReadShared`
     |
-    = note: Consider adding `#[derive(Immutable)]` to `Cell<u32>`
-    = help: the following other types implement trait `Immutable`:
-              &T
-              &mut T
-              ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-            and $N others
-    = note: required for `ReadShared` to implement `Permits<u32, Cell<u32>>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Large<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:113:1
+    |
+113 | #[typestate(unsafe_transmute = true, align = 4)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Large<Bits>` to implement `CastableState<Shared, ByRef>`
    --> tests/ui/cast_state.rs:113:1
     |
@@ -213,24 +196,22 @@ note: required by a bound in `cast_state_ref`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Cell<u32>: Immutable` is not satisfied
-   --> tests/ui/cast_state.rs:163:20
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `Cell<u32>` bytes stay valid as `u32` under `ReadShared` access
+   --> tests/ui/cast_state.rs:163:13
     |
 163 |     let _ = shared.cast_state_ref::<Bits>();
-    |                    ^^^^^^^^^^^^^^ the trait `Immutable` is not implemented for `Cell<u32>`
+    |             ^^^^^^ the trait `Permits<Cell<u32>, u32>` is not implemented for `ReadShared`
     |
-    = note: Consider adding `#[derive(Immutable)]` to `Cell<u32>`
-    = help: the following other types implement trait `Immutable`:
-              &T
-              &mut T
-              ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-            and $N others
-    = note: required for `ReadShared` to implement `Permits<Cell<u32>, u32>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Large<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:113:1
+    |
+113 | #[typestate(unsafe_transmute = true, align = 4)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Large<Shared>` to implement `CastableState<Bits, ByRef>`
    --> tests/ui/cast_state.rs:113:1
     |
@@ -248,24 +229,22 @@ note: required by a bound in `cast_state_ref`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state_ref`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `char: FromBytes` is not satisfied
-   --> tests/ui/cast_state.rs:167:18
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u32` bytes stay valid as `char` under `ReadWriteShared` access
+   --> tests/ui/cast_state.rs:167:13
     |
 167 |     let _ = bits.cast_state::<Letter>();
-    |                  ^^^^^^^^^^ the trait `FromBytes` is not implemented for `char`
+    |             ^^^^ the trait `Permits<u32, char>` is not implemented for `ReadWriteShared`
     |
-    = note: Consider adding `#[derive(FromBytes)]` to `char`
-    = help: the following other types implement trait `FromBytes`:
-              ()
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-              Atomic<u32>
-            and $N others
-    = note: required for `ReadWriteShared` to implement `Permits<u32, char>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Pointer<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:118:1
+    |
+118 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Pointer<Bits>` to implement `CastableState<Letter, ByValue>`
    --> tests/ui/cast_state.rs:118:1
     |
@@ -285,24 +264,22 @@ note: required by a bound in `cast_state`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Cell<u32>: Immutable` is not satisfied
-   --> tests/ui/cast_state.rs:171:18
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u32` bytes stay valid as `Cell<u32>` under `ReadShared` access
+   --> tests/ui/cast_state.rs:171:13
     |
 171 |     let _ = bits.cast_state::<Shared>();
-    |                  ^^^^^^^^^^ the trait `Immutable` is not implemented for `Cell<u32>`
+    |             ^^^^ the trait `Permits<u32, Cell<u32>>` is not implemented for `ReadShared`
     |
-    = note: Consider adding `#[derive(Immutable)]` to `Cell<u32>`
-    = help: the following other types implement trait `Immutable`:
-              &T
-              &mut T
-              ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-            and $N others
-    = note: required for `ReadShared` to implement `Permits<u32, Cell<u32>>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Ref<'_, S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:123:1
+    |
+123 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Ref<'_, Bits>` to implement `CastableState<Shared, ByValue>`
    --> tests/ui/cast_state.rs:123:1
     |
@@ -322,24 +299,22 @@ note: required by a bound in `cast_state`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `Cell<u32>: Immutable` is not satisfied
-   --> tests/ui/cast_state.rs:175:18
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `u32` bytes stay valid as `Cell<u32>` under `ReadShared` access
+   --> tests/ui/cast_state.rs:175:13
     |
 175 |     let _ = bits.cast_state::<Shared>();
-    |                  ^^^^^^^^^^ the trait `Immutable` is not implemented for `Cell<u32>`
+    |             ^^^^ the trait `Permits<u32, Cell<u32>>` is not implemented for `ReadShared`
     |
-    = note: Consider adding `#[derive(Immutable)]` to `Cell<u32>`
-    = help: the following other types implement trait `Immutable`:
-              &T
-              &mut T
-              ()
-              (A, B)
-              (A, B, C)
-              (A, B, C, D)
-              (A, B, C, D, E)
-              (A, B, C, D, E, F)
-            and $N others
-    = note: required for `ReadShared` to implement `Permits<u32, Cell<u32>>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `Counted<S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:128:1
+    |
+128 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `Counted<Bits>` to implement `CastableState<Shared, ByValue>`
    --> tests/ui/cast_state.rs:128:1
     |
@@ -359,24 +334,22 @@ note: required by a bound in `cast_state`
     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Isomorphic::cast_state`
     = note: this error originates in the attribute macro `typestate` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `bool: FromBytes` is not satisfied
-   --> tests/ui/cast_state.rs:179:18
+error[E0277]: convert with `morph` instead of transmuting: zerocopy can't show that `bool` bytes stay valid as `u8` under `ReadWrite` access
+   --> tests/ui/cast_state.rs:179:13
     |
 179 |     let _ = flag.cast_state::<Raw>();
-    |                  ^^^^^^^^^^ the trait `FromBytes` is not implemented for `bool`
+    |             ^^^^ the trait `Permits<bool, u8>` is not implemented for `ReadWrite`
     |
-    = note: Consider adding `#[derive(FromBytes)]` to `bool`
-    = help: the following other types implement trait `FromBytes`:
-              ()
-              Atomic<i16>
-              Atomic<i32>
-              Atomic<i64>
-              Atomic<i8>
-              Atomic<isize>
-              Atomic<u16>
-              Atomic<u32>
-            and $N others
-    = note: required for `ReadWrite` to implement `Permits<bool, u8>`
+    = note: derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` for a type you own. A pointer can't have them, so keep it in a field whose type doesn't use the state
+help: `RefMut<'_, S>` implements trait `CastableState<To, B>`
+   --> tests/ui/cast_state.rs:133:1
+    |
+133 | #[typestate(unsafe_transmute = true)]
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    | |
+    | `CastableState<__TypestateGroupsTargetState, ByMut>`
+    | `CastableState<__TypestateGroupsTargetState, ByRef>`
+    | `CastableState<__TypestateGroupsTargetState, ByValue>`
 note: required for `RefMut<'_, Flag>` to implement `CastableState<Raw, ByValue>`
    --> tests/ui/cast_state.rs:133:1
     |
