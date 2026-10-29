@@ -1,6 +1,6 @@
 [package]
 name = "typestate-groups"
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -16,7 +16,7 @@ default = ["alloc"]
 alloc = []
 
 [dependencies]
-typestate-groups-macros = { path = "../typestate-groups-macros", version = "0.1.6" }
+typestate-groups-macros = { path = "../typestate-groups-macros", version = "0.1.7" }
 zerocopy = "0.8.59"
 
 [dev-dependencies]
