@@ -164,14 +164,24 @@ impl Access for ReadWriteShared {}
 ///
 /// Every valid `Src` must be a valid `Dst` of the same size, used as
 /// `Self` describes.
+#[diagnostic::on_unimplemented(
+    message = "convert with `morph` instead of transmuting: zerocopy \
+               can't show that `{Src}` bytes stay valid as `{Dst}` under \
+               `{Self}` access",
+    note = "derive zerocopy's `IntoBytes`, `FromBytes` and `Immutable` \
+            for a type you own. A pointer can't have them, so keep it in \
+            a field whose type doesn't use the state"
+)]
 pub unsafe trait Permits<Src, Dst>: Access {}
 
 // SAFETY: `IntoBytes` gives `S` no uninitialized bytes, and `FromBytes`
 // accepts every initialized bit pattern as a `D`.
+#[diagnostic::do_not_recommend]
 unsafe impl<S: IntoBytes, D: FromBytes> Permits<S, D> for Read {}
 
 // SAFETY: as for `Read`, and `Immutable` rules out an `UnsafeCell` that a
 // shared alias could write through.
+#[diagnostic::do_not_recommend]
 unsafe impl<S: IntoBytes + Immutable, D: FromBytes + Immutable>
     Permits<S, D> for ReadShared
 {
@@ -179,12 +189,14 @@ unsafe impl<S: IntoBytes + Immutable, D: FromBytes + Immutable>
 
 // SAFETY: `IntoBytes` and `FromBytes` on both sides make every valid `S`
 // a valid `D` and every valid `D` a valid `S`.
+#[diagnostic::do_not_recommend]
 unsafe impl<S: IntoBytes + FromBytes, D: IntoBytes + FromBytes>
     Permits<S, D> for ReadWrite
 {
 }
 
 // SAFETY: as for `ReadWrite`, and `Immutable` rules out an `UnsafeCell`.
+#[diagnostic::do_not_recommend]
 unsafe impl<
     S: IntoBytes + FromBytes + Immutable,
     D: IntoBytes + FromBytes + Immutable,
