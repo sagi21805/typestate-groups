@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.3.1...typestate-groups-v0.3.2) - 2026-10-29
+
+### Other
+
+- Document intersecting groups in the README
+- Add the group's layouts to its marker so states of one group cast into each other without a CastableState bound
+- simplified implementation
+- Add runtime and UI tests for traits grouped by several state-types traits
+- Allow #[group_impl] to name one group per state-types trait with Key = Group pairs
+- Allow #[group_trait] to dispatch on several state-types traits, ordering their groups by key name
+- Fix group impls losing their group's associated types when their where-clause mentions the typestate
+
 ## [0.3.1](https://github.com/sagi21805/typestate-groups/compare/typestate-groups-v0.3.0...typestate-groups-v0.3.1) - 2026-10-14
 
 ### Other
