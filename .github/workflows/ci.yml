@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.88
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt, clippy
@@ -37,7 +37,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
       - name: MSRV
         if: ${{ !cancelled() }}
-        run: cargo +1.85 check --workspace --all-features
+        run: cargo +1.88 check --workspace --all-features
 
   test:
     name: Test (${{ matrix.os }})

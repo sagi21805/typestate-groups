@@ -6,19 +6,19 @@ error: use `#[group_impl]` on a trait impl, such as `impl Trait for Wrap<S>`
 49 | | }
    | |_^
 
-error: remove `Value = String`: `#[group_impl(Numbers)]` takes the state's types from `Numbers`. To pin a type `Numbers` doesn't set, declare it on the trait `Numbers` groups by, or group this trait by the trait that declares it
+error: remove `Value = String`, because `#[group_impl]` takes the state's types from `Numbers`. To pin a type they don't set, declare it on a trait they group by, or group this trait by the trait that declares it
   --> tests/ui/group_impl.rs:53:14
    |
 53 | impl<S: Meta<Value = String>> Describe for Wrap<S> {
    |              ^^^^^^^^^^^^^^
 
-error: remove `Value = String`: `#[group_impl(Numbers)]` takes the state's types from `Numbers`. To pin a type `Numbers` doesn't set, declare it on the trait `Numbers` groups by, or group this trait by the trait that declares it
+error: remove `Value = String`, because `#[group_impl]` takes the state's types from `Numbers`. To pin a type they don't set, declare it on a trait they group by, or group this trait by the trait that declares it
   --> tests/ui/group_impl.rs:61:39
    |
 61 | impl<I: Iterator<Item = u32>, S: Meta<Value = String>> Describe
    |                                       ^^^^^^^^^^^^^^
 
-error: remove `Value = String`: `#[group_impl(Words)]` takes the state's types from `Words`. To pin a type `Words` doesn't set, declare it on the trait `Words` groups by, or group this trait by the trait that declares it
+error: remove `Value = String`, because `#[group_impl]` takes the state's types from `Words`. To pin a type they don't set, declare it on a trait they group by, or group this trait by the trait that declares it
   --> tests/ui/group_impl.rs:74:13
    |
 74 |     S: Meta<Value = String>,

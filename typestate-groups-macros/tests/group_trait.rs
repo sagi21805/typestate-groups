@@ -231,3 +231,90 @@ fn group_trait_forwards_each_groups_types_and_constants() {
     assert_eq!((unit.as_str(), view), ("full x10", Some('g')));
     assert_eq!(<Node<char, FullHead> as Measure>::SCALE, 10);
 }
+
+/// Each state's place in its list.
+#[state_types]
+trait Role {}
+
+#[group(Heads)]
+impl Role for (FreeHead, FullHead) {}
+
+#[group(Attached)]
+impl Role for (FreeAttached, FullAttached) {}
+
+#[group(Detached)]
+impl Role for (FreeDetached, FullDetached) {}
+
+/// Grouped by both `List` and `Role`, so each impl covers the states in
+/// one group of each.
+#[group_trait(by = (List, Role))]
+trait Unlink {
+    fn unlink(&self) -> &'static str;
+}
+
+#[group_impl(List = FreeList, Role = Heads, state = S)]
+impl<T, S: Meta> Unlink for Node<T, S> {
+    fn unlink(&self) -> &'static str {
+        "free head"
+    }
+}
+
+#[group_impl(List = FreeList, Role = Attached, state = S)]
+impl<T, S: Meta> Unlink for Node<T, S> {
+    fn unlink(&self) -> &'static str {
+        "free attached"
+    }
+}
+
+#[group_impl(Role = Heads, List = FullList, state = S)]
+impl<T, S: Meta> Unlink for Node<T, S> {
+    fn unlink(&self) -> &'static str {
+        "full head"
+    }
+}
+
+#[group_impl(Role = Attached, List = FullList, state = S)]
+impl<T, S: Meta> Unlink for Node<T, S> {
+    fn unlink(&self) -> &'static str {
+        "full attached"
+    }
+}
+
+fn unlink_any<S: Meta + List + Role>(node: &Node<(), S>) -> &'static str
+where
+    Node<(), S>: Unlink,
+{
+    node.unlink()
+}
+
+#[test]
+fn group_trait_by_several_traits_dispatches_to_the_groups_of_each() {
+    let free_head = Node::<(), FreeHead> { value: 0, tag: () };
+    let free_attached = Node::<(), FreeAttached> { value: 0, tag: () };
+    let full_head = Node::<(), FullHead> { value: 0, tag: () };
+    let full_attached = Node::<(), FullAttached> { value: 0, tag: () };
+
+    assert_eq!(free_head.unlink(), "free head");
+    assert_eq!(free_attached.unlink(), "free attached");
+    assert_eq!(full_head.unlink(), "full head");
+    assert_eq!(unlink_any(&full_attached), "full attached");
+}
+
+/// Names its traits in the opposite order to `Unlink`.
+#[group_trait(by = (Role, List))]
+trait Describe {
+    fn describe(&self) -> &'static str;
+}
+
+#[group_impl(List = FullList, Role = Detached, state = S)]
+impl<T, S: Meta> Describe for Node<T, S> {
+    fn describe(&self) -> &'static str {
+        "full detached"
+    }
+}
+
+#[test]
+fn group_trait_orders_its_traits_by_name() {
+    let node = Node::<(), FullDetached> { value: 0, tag: () };
+    assert_eq!(node.describe(), "full detached");
+}

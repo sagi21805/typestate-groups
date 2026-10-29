@@ -6,11 +6,11 @@ error[E0107]: trait takes 2 generic arguments but 1 generic argument was supplie
 39 | impl<S: Meta> Scale for Wrap<S> {
    |               ^^^^^ expected 2 generic arguments
    |
-note: trait defined here, with 2 generic parameters: `__TypestateGroupsGroup`, `F`
+note: trait defined here, with 2 generic parameters: `__TypestateGroupsMetaGroup`, `F`
   --> tests/ui/group_trait_generic.rs:33:7
    |
 32 | #[group_trait(by = Meta)]
-   | -------------------------
+   |                    ----
 33 | trait Scale<F> {
    |       ^^^^^ -
 help: add missing generic argument

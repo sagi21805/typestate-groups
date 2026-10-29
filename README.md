@@ -109,6 +109,47 @@ impl<S: Stage<Sample = u32>> Report for Frame<S> { .. }
 impl<S: Stage<Sample = f32>> Report for Frame<S> { .. }
 ```
 
+#### Grouping by several traits
+
+`by` also takes a tuple of `#[state_types]` traits. Each impl then names
+one group per trait as `Trait = Group`, and covers the states that are in
+all of them. Add a tag-only trait for where a sample came from:
+
+```rust,ignore
+#[state_types]
+trait Origin {}
+
+#[group(Sensor)]
+impl Origin for (Sampled,) {}
+
+#[group(Processed)]
+impl Origin for (Filtered, Calibrated) {}
+
+#[group_trait(by = (Stage, Origin))]
+trait Label {
+    fn label(&self) -> &'static str;
+}
+
+#[group_impl(Stage = Counts, Origin = Sensor)]
+impl<S: Stage> Label for Frame<S> {
+    fn label(&self) -> &'static str { "raw counts" }
+}
+
+#[group_impl(Stage = Counts, Origin = Processed)]
+impl<S: Stage> Label for Frame<S> {
+    fn label(&self) -> &'static str { "filtered counts" }
+}
+
+#[group_impl(Stage = Volts, Origin = Processed)]
+impl<S: Stage> Label for Frame<S> {
+    fn label(&self) -> &'static str { "volts" }
+}
+```
+
+The traits and pairs can come in any order. Every impl names a group for
+each trait, and two impls that name the same groups conflict with
+`E0119`.
+
 ### 3. Changing state by value
 
 Implement `MorphFrom` to say how one state becomes another, then call
