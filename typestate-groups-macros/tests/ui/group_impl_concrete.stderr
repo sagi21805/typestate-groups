@@ -1,0 +1,31 @@
+error[E0425]: cannot find type `T` in this scope
+  --> tests/ui/group_impl_concrete.rs:65:52
+   |
+65 | #[group_impl(Kind = Heads, Place = InList, state = T)]
+   |                                                    ^ not found in this scope
+
+error[E0271]: type mismatch resolving `<Loose as Place>::Marker == InList`
+  --> tests/ui/group_impl_concrete.rs:49:1
+   |
+49 | #[group_impl(Kind = Nodes, Place = InList, state = Loose)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<Loose as Place>::Marker == InList`
+   |
+note: expected this to be `InList`
+  --> tests/ui/group_impl_concrete.rs:35:9
+   |
+35 | #[group(OutOfList)]
+   |         ^^^^^^^^^
+   = note: this error originates in the attribute macro `group_impl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0271]: type mismatch resolving `<Node<Loose> as WithState>::State == Linked`
+  --> tests/ui/group_impl_concrete.rs:57:1
+   |
+57 | #[group_impl(Kind = Nodes, Place = InList, state = Linked)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<Node<Loose> as WithState>::State == Linked`
+   |
+note: expected this to be `Linked`
+  --> tests/ui/group_impl_concrete.rs:39:13
+   |
+39 | struct Node<S: Kind> {
+   |             ^
+   = note: this error originates in the attribute macro `group_impl` (in Nightly builds, run with -Z macro-backtrace for more info)

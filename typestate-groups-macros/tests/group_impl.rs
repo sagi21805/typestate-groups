@@ -199,3 +199,118 @@ fn group_impl_casts_to_a_state_of_its_group_without_a_bound() {
     let taken: &mut Slotted<Taken> = empty.retagged();
     assert_eq!(taken.bits, 7);
 }
+
+// --- `state = Type` implements the one state two groups share ---
+
+mod concrete {
+    use typestate_groups::{MorphFrom, Morphic};
+    use typestate_groups_macros::{
+        group, group_impl, group_trait, state, state_types, typestate,
+    };
+
+    #[state_types]
+    pub trait Kind {
+        type Tag;
+    }
+
+    #[state_types]
+    pub trait Place {}
+
+    #[expect(
+        dead_code,
+        reason = "`Head` only gives `InList` a second state"
+    )]
+    #[state]
+    pub struct Head;
+    #[state]
+    pub struct Linked;
+    #[state]
+    pub struct Loose;
+
+    #[group(Heads)]
+    impl Kind for (Head,) {
+        type Tag = ();
+    }
+
+    #[group(Nodes)]
+    impl Kind for (Linked, Loose) {
+        #[size(4)]
+        type Tag = u32;
+    }
+
+    #[group(InList)]
+    impl Place for (Head, Linked) {}
+
+    #[group(OutOfList)]
+    impl Place for (Loose,) {}
+
+    #[typestate(unsafe_transmute = true)]
+    pub struct Node<S: Kind> {
+        pub tag: S::Tag,
+    }
+
+    impl MorphFrom<Node<Linked>> for Node<Loose> {
+        fn morph_from(src: Node<Linked>) -> Self {
+            Node { tag: src.tag + 1 }
+        }
+    }
+
+    #[group_trait(by = (Kind, Place))]
+    pub trait Leave {
+        fn leave(&mut self) -> &mut Node<Loose>;
+    }
+
+    // `Nodes` and `InList` share only `Linked`. Naming it lets `morph_mut`
+    // find `MorphFrom<Node<Linked>>` without a `where` clause.
+    #[group_impl(Kind = Nodes, Place = InList, state = Linked)]
+    impl Leave for Node<Linked> {
+        fn leave(&mut self) -> &mut Node<Loose> {
+            self.morph_mut::<Loose>()
+        }
+    }
+
+    #[typestate(state = S, unsafe_transmute = true)]
+    pub struct Item<T, S: Kind> {
+        pub value: T,
+        pub tag: S::Tag,
+    }
+
+    impl<T> MorphFrom<Item<T, Linked>> for Item<T, Loose> {
+        fn morph_from(src: Item<T, Linked>) -> Self {
+            Item {
+                value: src.value,
+                tag: src.tag + 1,
+            }
+        }
+    }
+
+    #[group_trait(by = (Kind, Place))]
+    pub trait LeaveItem<T> {
+        fn leave(&mut self) -> &mut Item<T, Loose>;
+    }
+
+    // The impl's other type parameter stays generic.
+    #[group_impl(Kind = Nodes, Place = InList, state = Linked)]
+    impl<T> LeaveItem<T> for Item<T, Linked> {
+        fn leave(&mut self) -> &mut Item<T, Loose> {
+            self.morph_mut::<Loose>()
+        }
+    }
+}
+
+#[test]
+fn group_impl_on_a_concrete_state_morphs_without_a_bound() {
+    use concrete::{Leave, Linked, Node};
+
+    let mut node = Node::<Linked> { tag: 1 };
+    assert_eq!(node.leave().tag, 2);
+}
+
+#[test]
+fn group_impl_on_a_concrete_state_keeps_other_parameters_generic() {
+    use concrete::{Item, LeaveItem, Linked};
+
+    let mut item = Item::<u16, Linked> { value: 7, tag: 1 };
+    let loose = item.leave();
+    assert_eq!((loose.value, loose.tag), (7, 2));
+}

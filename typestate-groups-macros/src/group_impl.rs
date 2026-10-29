@@ -2,26 +2,26 @@ use extend::ext;
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
-    AssocType, Ident, ItemImpl, Path, PathSegment, Token, WherePredicate,
+    AssocType, Generics, Ident, ItemImpl, Path, PathSegment, Token, Type,
+    TypePath, WherePredicate,
     parse::{Parse, ParseStream},
     parse_quote,
 };
 
 use crate::syn_ext::{
     GenericsExt as _, ItemImplExt as _, OptionExt as _,
-    PathArgumentsExt as _,
+    PathArgumentsExt as _, TypeExt as _,
 };
 
 pub struct GroupImpl<'ast> {
     inner_impl: &'ast ItemImpl,
     /// Ordered by key, as `#[group_trait]` orders its keys.
     groups: &'ast [ImplGroup],
-    /// The impl's generic type parameter carrying the state.
-    state: &'ast Ident,
+    state: ImplState<'ast>,
 }
 
 impl<'ast> GroupImpl<'ast> {
-    /// Resolves the state parameter of a trait impl.
+    /// Resolves the state of a trait impl.
     pub fn new(
         args: &'ast GroupImplArgs,
         item_impl: &'ast ItemImpl,
@@ -34,30 +34,26 @@ impl<'ast> GroupImpl<'ast> {
             ));
         }
 
-        let mut type_params =
-            item_impl.generics.type_params().map(|tp| &tp.ident);
-
         let state = match &args.state {
-            Some(state) => type_params
-                .find(|ident| *ident == state)
-                .ok_or_else(|| {
-                    syn::Error::new(
-                        state.span(),
-                        "set `state` to one of the impl's generic type \
-                         parameters",
-                    )
-                })?,
-            None => type_params
-                .next()
-                .filter(|_| type_params.next().is_none())
-                .ok_or_else(|| {
-                    syn::Error::new_spanned(
-                        &item_impl.generics,
-                        "add `state = <Ident>` to `#[group_impl]` to \
-                         name the state parameter; only an impl with one \
-                         generic type parameter can leave it out",
-                    )
-                })?,
+            Some(state) => ImplState::new(state, &item_impl.generics),
+            None => {
+                let mut type_params =
+                    item_impl.generics.type_params().map(|tp| &tp.ident);
+                type_params
+                    .next()
+                    .filter(|_| type_params.next().is_none())
+                    .map(ImplState::Param)
+                    .ok_or_else(|| {
+                        syn::Error::new_spanned(
+                            &item_impl.generics,
+                            "add `state = <Ident>` to `#[group_impl]` to \
+                             name the state parameter, or `state = \
+                             <Type>` to name one concrete state; only an \
+                             impl with one generic type parameter can \
+                             leave it out",
+                        )
+                    })?
+            }
         };
 
         Ok(GroupImpl {
@@ -73,11 +69,16 @@ impl ToTokens for GroupImpl<'_> {
     /// Group, X> for T<S> where S: __a_helper_mod::Member<Group>`
     ///
     /// Each `Key = Group` pair also bounds `S: Key<Marker = Group>`, so a
-    /// group named under the wrong key fails there.
+    /// group named under the wrong key fails there. A concrete state adds
+    /// `T<S>: WithState<State = S>`.
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut group_impl = self.inner_impl.clone();
-        let bindings =
-            group_impl.generics.take_assoc_type_bindings(self.state);
+        let bindings = match self.state {
+            ImplState::Param(param) => {
+                group_impl.generics.take_assoc_type_bindings(param)
+            }
+            ImplState::Concrete(_) => Vec::new(),
+        };
 
         let (trait_path, _) = group_impl
             .trait_
@@ -88,11 +89,12 @@ impl ToTokens for GroupImpl<'_> {
         let key_bounds = self
             .groups
             .iter()
-            .filter_map(|group| group.key_bound(self.state));
+            .filter_map(|group| group.key_bound(&self.state));
         let predicates =
             &mut group_impl.generics.make_where_clause().predicates;
         predicates.push(self.member_bound(&helper_trait));
         predicates.extend(key_bounds);
+        predicates.extend(self.concrete_state_bound());
         group_impl.qualify_self_paths(&helper_trait);
 
         let binding_errors = bindings.iter().map(|binding| {
@@ -147,8 +149,21 @@ impl GroupImpl<'_> {
             .expect("a parsed trait path has at least one segment") =
             parse_quote!(#member_ident<#(#groups),*>);
 
-        let state = self.state;
+        let state = &self.state;
         parse_quote! { #state: #member }
+    }
+
+    /// `T<Attached>: WithState<State = Attached>` for a concrete state, so
+    /// an impl for a state other than `state` fails. Without it, the
+    /// helper impl would never be used and nothing would report it.
+    fn concrete_state_bound(&self) -> Option<WherePredicate> {
+        let ImplState::Concrete(state) = self.state else {
+            return None;
+        };
+        let self_ty = &self.inner_impl.self_ty;
+        Some(parse_quote! {
+            #self_ty: ::typestate_groups::WithState<State = #state>
+        })
     }
 
     /// The error for a binding on the state, which the group already sets
@@ -179,13 +194,13 @@ impl GroupImpl<'_> {
 pub struct GroupImplArgs {
     /// Ordered by key, as `#[group_trait]` orders its keys.
     groups: Vec<ImplGroup>,
-    state: Option<Ident>,
+    state: Option<Type>,
 }
 
 impl Parse for GroupImplArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut groups = Vec::new();
-        let mut state: Option<Ident> = None;
+        let mut state: Option<Type> = None;
 
         while !input.is_empty() {
             let ident: Ident = input.parse()?;
@@ -274,10 +289,46 @@ impl ImplGroup {
     }
 
     /// `Meta = Group` -> `S: Meta<Marker = Group>`
-    fn key_bound(&self, state: &Ident) -> Option<WherePredicate> {
+    fn key_bound(&self, state: &ImplState) -> Option<WherePredicate> {
         let ImplGroup { key, group } = self;
         let key = key.as_ref()?;
 
         Some(parse_quote!(#state: #key<Marker = #group>))
+    }
+}
+
+/// The state a `#[group_impl]` covers.
+enum ImplState<'ast> {
+    /// A generic type parameter of the impl, one state per group member.
+    Param(&'ast Ident),
+    /// One concrete state type.
+    Concrete(&'ast Type),
+}
+
+impl<'ast> ImplState<'ast> {
+    /// `state = S` naming one of the impl's type parameters is a `Param`,
+    /// and any other type is `Concrete`.
+    fn new(state: &'ast Type, generics: &'ast Generics) -> Self {
+        let param = match state.peeled() {
+            Type::Path(TypePath {
+                qself: None, path, ..
+            }) => path.get_ident().and_then(|ident| {
+                generics
+                    .type_params()
+                    .map(|tp| &tp.ident)
+                    .find(|param| *param == ident)
+            }),
+            _ => None,
+        };
+        param.map_or(ImplState::Concrete(state), ImplState::Param)
+    }
+}
+
+impl ToTokens for ImplState<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            ImplState::Param(param) => param.to_tokens(tokens),
+            ImplState::Concrete(state) => state.to_tokens(tokens),
+        }
     }
 }

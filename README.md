@@ -187,6 +187,32 @@ let volts = frame.try_morph::<Filtered>()?.morph::<Calibrated>();
 One impl can cover many pairs, such as `impl<S: Stage, S2: Stage>
 MorphFrom<Frame<S>> for Frame<S2> where S2::Sample: From<S::Sample>`.
 
+#### One state of an intersection
+
+`Counts` and `Processed` share only `Filtered`. A `#[group_impl]` for them
+can name that state with `state = Type` and implement the trait for
+`Frame<Filtered>` itself:
+
+```rust,ignore
+#[group_trait(by = (Stage, Origin))]
+trait Calibrate {
+    fn calibrate(self) -> Frame<Calibrated>;
+}
+
+#[group_impl(Stage = Counts, Origin = Processed, state = Filtered)]
+impl Calibrate for Frame<Filtered> {
+    fn calibrate(self) -> Frame<Calibrated> {
+        self.morph::<Calibrated>()
+    }
+}
+```
+
+With `impl<S: Stage> Calibrate for Frame<S>`, rustc can't see that `S` is
+always `Filtered`, so `morph` would need `where Frame<Calibrated>:
+MorphFrom<Frame<S>>`. Naming the state finds the `MorphFrom` impl above
+directly. A state outside the groups, or an impl for a different state
+than `state`, fails to compile.
+
 ### 4. Reinterpreting in place
 
 When two states hold types of the same size, you can reinterpret the
