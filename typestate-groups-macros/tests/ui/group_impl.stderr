@@ -24,14 +24,8 @@ error: remove `Value = String`, because `#[group_impl]` takes the state's types 
 74 |     S: Meta<Value = String>,
    |             ^^^^^^^^^^^^^^
 
-error: add `state = <Ident>` to `#[group_impl]` to name the state parameter; only an impl with one generic type parameter can leave it out
+error: add `state = <Ident>` to `#[group_impl]` to name the state parameter, or `state = <Type>` to name one concrete state; only an impl with one generic type parameter can leave it out
   --> tests/ui/group_impl.rs:82:5
    |
 82 | impl<S: Meta, I> Describe for Pair<S, I> {
    |     ^^^^^^^^^^^^
-
-error: set `state` to one of the impl's generic type parameters
-  --> tests/ui/group_impl.rs:88:31
-   |
-88 | #[group_impl(Numbers, state = T)]
-   |                               ^

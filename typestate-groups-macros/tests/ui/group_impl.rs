@@ -85,11 +85,4 @@ impl<S: Meta, I> Describe for Pair<S, I> {
     }
 }
 
-#[group_impl(Numbers, state = T)]
-impl<S: Meta, I> Describe for Pair<S, I> {
-    fn describe(&self) -> String {
-        String::new()
-    }
-}
-
 fn main() {}

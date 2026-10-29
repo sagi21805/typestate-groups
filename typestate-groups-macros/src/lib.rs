@@ -102,6 +102,16 @@ pub fn group(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// For a trait grouped by several traits, name one group per trait, in
 /// any order: `#[group_impl(Meta = Numbers, Role = Heads, state = S)]`.
 ///
+/// `state = Type` implements the trait for one concrete state, such as the
+/// only state two groups share. The body then sees that state's own impls,
+/// so it can call `morph_mut::<To>()` without a `MorphFrom` bound.
+///
+/// `#[group_impl(Meta = Numbers, Role = Heads, state = Small)] impl
+/// Describe for Wrap<Small>` -> `impl DescribeHelper<Numbers, Heads> for
+/// Wrap<Small> where Small: Member<Numbers, Heads>, Small: Meta<Marker =
+/// Numbers>, Small: Role<Marker = Heads>, Wrap<Small>: WithState<State =
+/// Small>`
+///
 /// See [`macro@group_trait`] for an example.
 #[proc_macro_attribute]
 pub fn group_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
